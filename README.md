@@ -4,7 +4,7 @@
 
 `simulation` support differential equation models (also called System Dynamics models) in addition to Agent Based Models, or any mixture of the two techniques.
 
-`simulation` supports importing and running models built with [Insight Maker](https://insightmaker.com).
+In addition to building models directly with the package, `simulation` also supports importing and running models built with [Insight Maker](https://insightmaker.com).
 
 ## Installing the package
 
