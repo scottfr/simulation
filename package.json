@@ -1,0 +1,17 @@
+{
+  "name": "simulation",
+  "version": "1.0.0",
+  "author": "Scott Fortmann-Roe",
+  "license" : "AGPL",
+  "description": "simulation is a multi-method simulation package for physical or social systems. Use it to create models for the environment, business, or other domains.",
+  "keywords": ["simulation", "modeling", "differential equations", "system dynamics", "agent based modeling", "ABM"],
+  "homepage": "https://github.com/scottfr/simulation",
+  "type": "module",
+  "main": "src/api/Model.js",
+  "exports": {
+    ".": "./src/api/Model.js"
+  },
+  "scripts": {
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config=test/config.json --watch"
+  }
+}
