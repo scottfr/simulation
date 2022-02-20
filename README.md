@@ -51,7 +51,7 @@ let m = new Model({
 });
 ```
 
-**Tip: Use VSCode or another editor that supports JSDoc type annotations. `simulation` makes extensive use of type annotations to indicate available options.**
+**Tip: Use VSCode or another editor that supports JSDoc type annotations. `simulation` makes extensive use of type annotations to indicate available options. Add `// @ts-check` to the top of a JavaScript file in VSCode to enable automatic type checking of the code, this will help catch errors.**
 
 This creates a model that will simulate 100 years starting at the year 2020.
 
