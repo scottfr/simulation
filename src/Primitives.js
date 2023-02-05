@@ -97,7 +97,7 @@ export class SPrimitive {
 
 
   // eslint-disable-next-line
-	innerClone(_p) { }
+  innerClone(_p) { }
 
   clearCached() {
     this.cachedValue = undefined;
@@ -128,10 +128,10 @@ export class SPrimitive {
   }
 
   /**
-	 * @param {Material} length
-	 *
-	 * @return {ValueType[]}
-	 */
+   * @param {Material} length
+   *
+   * @return {ValueType[]}
+   */
   getPastValues(length) {
     let items = this.pastValues.slice();
 
@@ -157,12 +157,12 @@ export class SPrimitive {
   }
 
   /**
-	 * @param {Material} delay
-	 * @param {ValueType=} defaultValue
+   * @param {Material} delay
+   * @param {ValueType=} defaultValue
    *
-	 * @returns {ValueType}
-	 */
-  pastValue(delay, defaultValue=null) {
+   * @returns {ValueType}
+   */
+  pastValue(delay, defaultValue = null) {
     let periods;
 
     // check whether we have evaluated the current time period and stored it
@@ -282,8 +282,8 @@ export class SPrimitive {
   }
 
   /**
-	 * @returns {ValueType}
-	 */
+   * @returns {ValueType}
+   */
   value() {
     if (this.cachedValue === undefined && this.frozen && this.pastValues.length > 0) {
       let v = this.pastValues[this.pastValues.length - 1];
@@ -401,10 +401,10 @@ export class SPrimitive {
 
 export class Placeholder extends SPrimitive {
   /**
-	 * @param {import("./DNA").DNA} dna
-	 * @param {SPrimitive | SPopulation} primitive
+   * @param {import("./DNA").DNA} dna
+   * @param {SPrimitive | SPopulation} primitive
    * @param {import("./Simulator").Simulator} simulate
-	 */
+   */
   constructor(dna, primitive, simulate) {
     super(simulate);
 
@@ -445,8 +445,8 @@ export class SState extends SPrimitive {
   }
 
   /**
-	 * @param {Material} value
-	 */
+   * @param {Material} value
+   */
   setValue(value) {
     this.setActive(trueValue(value));
     this.cachedValue = undefined;
@@ -575,9 +575,9 @@ export class STransition extends SPrimitive {
   innerClone() { }
 
   /**
-	 * @param {SState} alpha
-	 * @param {SState} omega
-	 */
+   * @param {SState} alpha
+   * @param {SState} omega
+   */
   setEnds(alpha, omega) {
     this.alpha = alpha;
     this.omega = omega;
@@ -994,8 +994,8 @@ export class SPopulation extends SPrimitive {
   }
 
   /**
-	 * @returns {Material}
-	 */
+   * @returns {Material}
+   */
   toNum() {
     throw new ModelError(`<i>[${toHTML(this.dna.name)}]</i> is a population of agents and cannot be used as a direct value in equations.`, {
       code: 1107
@@ -1053,7 +1053,7 @@ export class SPopulation extends SPrimitive {
       if (this.placement === "Custom Function") {
         // @ts-ignore - Agent is equivalent to Primitive for this use case
         neighbors.self = agent;
-        agent.location = simpleUnitsTest(/** @type {Vector} */ (simpleEquation(this.placementFunction, this.simulate, { "-parent": this.simulate.varBank, self: agent }, neighbors)), this.geoDimUnitsObject, this.simulate, null, null, "Agent placement functions must return a two element vector");
+        agent.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation(this.placementFunction, this.simulate, { "-parent": this.simulate.varBank, self: agent }, neighbors)), this.geoDimUnitsObject, this.simulate, null, null, "Agent placement functions must return a two element vector");
 
         validateAgentLocation(agent.location, this);
 
@@ -1225,8 +1225,8 @@ export class SAgent {
   }
 
   /**
-	 * @param {number} index
-	 */
+   * @param {number} index
+   */
   setIndex(index) {
     this.index = index;
     for (let child of this.children) {
@@ -1278,9 +1278,9 @@ export class SAgent {
   }
 
   /**
-	 * @param {SAgent} x
-	 * @param {Material=} weight
-	 */
+   * @param {SAgent} x
+   * @param {Material=} weight
+   */
   connect(x, weight) {
     let w = weight === undefined ? new Material(1) : weight;
     if (x !== this) {
@@ -1304,8 +1304,8 @@ export class SAgent {
   }
 
   /**
-	 * @param {SAgent} x
-	 */
+   * @param {SAgent} x
+   */
   unconnect(x) {
     if (x !== this) {
       let i = this.connected.indexOf(x);
@@ -1320,9 +1320,9 @@ export class SAgent {
   }
 
   /**
-	 * @param {SAgent} x
-	 * @returns {Material}
-	 */
+   * @param {SAgent} x
+   * @returns {Material}
+   */
   connectionWeight(x) {
     if (x !== this) {
       let i = this.connected.indexOf(x);
@@ -1338,9 +1338,9 @@ export class SAgent {
 
 
   /**
-	 * @param {SAgent} x
-	 * @param {Material} w
-	 */
+   * @param {SAgent} x
+   * @param {Material} w
+   */
   setConnectionWeight(x, w) {
     if (x !== this) {
       let i = this.connected.indexOf(x);
@@ -1395,8 +1395,8 @@ export class SStock extends SPrimitive {
   }
 
   /**
-	 * @param {Material} value
-	 */
+   * @param {Material} value
+   */
   setValue(value) {
     this.level = value;
     this.cachedValue = undefined;
@@ -1423,8 +1423,8 @@ export class SStock extends SPrimitive {
   }
 
   /**
-	 * @param {Material=} delay
-	 */
+   * @param {Material=} delay
+   */
   setDelay(delay) {
     delay = delay || this.dna.delay;
     this.delay = delay;
@@ -1506,8 +1506,8 @@ export class SStock extends SPrimitive {
   }
 
   /**
-	 * @param {ValueType} amnt
-	 */
+   * @param {ValueType} amnt
+   */
   subtract(amnt) {
     this.level = minus(this.level, amnt);
     if (this.dna.nonNegative) {
@@ -1527,9 +1527,9 @@ export class SStock extends SPrimitive {
   }
 
   /**
-	 * @param {ValueType} amnt
-	 * @param {Material} time
-	 */
+   * @param {ValueType} amnt
+   * @param {Material} time
+   */
   add(amnt, time) {
     if (this.delay === undefined) {
       this.level = plus(this.level, amnt);
@@ -1553,10 +1553,10 @@ export class SStock extends SPrimitive {
   }
 
   /**
-	 * @param {ValueType} amnt
-	 * @param {Material} time
-	 * @param {Material=} delay
-	 */
+   * @param {ValueType} amnt
+   * @param {Material} time
+   * @param {Material=} delay
+   */
   scheduleAdd(amnt, time, delay) {
     delay = delay || this.delay;
 
@@ -1570,7 +1570,7 @@ export class SStock extends SPrimitive {
       },
       priority: -100,
       name: "Conveyor Add (" + this.dna.name + ")",
-      action: (_task) =>{
+      action: (_task) => {
         oldLevel = this.level;
         this.level = plus(this.level, amnt);
 
@@ -1598,8 +1598,8 @@ export class SStock extends SPrimitive {
   }
 
   /**
-	 * @returns {ValueType}
-	 */
+   * @returns {ValueType}
+   */
   totalContents() {
     if (this.level === null) {
       this.setInitialValue();
@@ -1609,7 +1609,7 @@ export class SStock extends SPrimitive {
       let res = this.level;
       for (let i = 0; i < this.tasks.length; i++) {
         if (greaterThan(this.tasks[i].time, this.simulate.time()) && lessThanEq(this.tasks[i].time, plus(this.simulate.time(), this.delay))) {
-          res = plus(res, /** @type {ValueType} */ (this.tasks[i].data.amnt));
+          res = plus(res, /** @type {ValueType} */(this.tasks[i].data.amnt));
         }
       }
 
@@ -1633,7 +1633,7 @@ export class SStock extends SPrimitive {
       let res = this.level;
       for (let i = 0; i < this.tasks.length; i++) {
         if (greaterThan(this.tasks[i].time, this.simulate.time()) && lessThanEq(this.tasks[i].time, plus(this.simulate.time(), this.dna.solver.timeStep))) {
-          res = plus(res, /** @type {ValueType} */ (this.tasks[i].data.amnt));
+          res = plus(res, /** @type {ValueType} */(this.tasks[i].data.amnt));
         }
       }
       return res;
@@ -1663,8 +1663,8 @@ export class SConverter extends SPrimitive {
   }
 
   /**
-	 * @returns {Material}
-	 */
+   * @returns {Material}
+   */
   getInputValue() {
     if (this.source === "*time") {
       return this.simulate.time();
@@ -1688,7 +1688,7 @@ export class SConverter extends SPrimitive {
       }
     } else {
       console.error("Invalid source", this.source);
-      throw "Invalid source";
+      throw new Error("Invalid source");
     }
   }
 
@@ -1697,8 +1697,8 @@ export class SConverter extends SPrimitive {
   }
 
   /**
-	 * @returns {Material}
-	 */
+   * @returns {Material}
+   */
   getOutputValue() {
     let inp = this.getInputValue();
 
@@ -1795,9 +1795,9 @@ export class SFlow extends SPrimitive {
   innerClone() { }
 
   /**
-	 * @param {SStock} alpha
-	 * @param {SStock} omega
-	 */
+   * @param {SStock} alpha
+   * @param {SStock} omega
+   */
   setEnds(alpha, omega) {
     this.alpha = alpha;
     this.omega = omega;
@@ -2006,7 +2006,7 @@ export class SFlow extends SPrimitive {
 
         if (this.alpha !== null && this.alpha.dna.nonNegative) {
           let modifier;
-          try{
+          try {
             modifier = minus(toNum(this.alpha.level), rate);
           } catch (err) {
             throw new ModelError(`Incompatible units for flow <i>[${toHTML(this.dna.name)}]</i> and connected stock <i>[${toHTML(this.alpha.dna.name)}]</i>. Stock has units of <i>${this.alpha.dna.units ? this.alpha.dna.units.toString() : "unitless"}</i>. The flow should have the equivalent units divided by some time unit such as Years.`, {

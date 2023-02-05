@@ -184,3 +184,21 @@ test("Failed type conversions", () => {
   failure("6 % 'abc'", "Cannot convert");
   failure("6 % true", "Cannot convert");
 });
+
+
+test("Invalid use of value()", () => {
+  let m = new Model();
+
+  let x = m.Variable({
+    name: "x",
+    value: "{1, 2, 3}"
+  });
+
+  let y = m.Variable({
+    name: "y",
+    value: "[x].value([x])"
+  });
+
+  m.Link(x, y);
+  expect(() => m.simulate()).toThrow(/does not contain agents/);
+});

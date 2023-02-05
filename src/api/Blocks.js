@@ -1,6 +1,5 @@
 import { ModelError } from "../formula/ModelError.js";
 import { isTrue } from "../Utilities.js";
-import { Model } from "./Model.js";
 
 
 /**
@@ -34,7 +33,7 @@ export class Primitive {
   constructor(node, config) {
     this._node = node;
 
-    /** @type {Model} */
+    /** @type {import("./Model").Model} */
     this.model = null;
 
     for (let key in config) {
@@ -487,7 +486,7 @@ export class Converter extends ValuedPrimitive {
       }
 
 
-      let res =  {
+      let res = {
         x: +parts[0],
         y: +parts[1]
       };
@@ -1059,7 +1058,7 @@ export class Population extends Primitive {
  */
 
 export class Container extends Primitive {
-  children(recursive=true) {
+  children(recursive = true) {
     let children = this._node.children ? this._node.children.map(x => x.primitive(this.model)) : [];
 
     if (recursive) {
@@ -1078,7 +1077,7 @@ export class Container extends Primitive {
   /**
    * @param {PrimitiveConfig & ValuedConfig & StockConfig} config
    */
-  Stock(config={}) {
+  Stock(config = {}) {
     let stock = this.model.Stock(config);
     stock.parent = this;
     return stock;
@@ -1087,7 +1086,7 @@ export class Container extends Primitive {
   /**
    * @param {PrimitiveConfig & ValuedConfig & VariableConfig} config
    */
-  Variable(config={}) {
+  Variable(config = {}) {
     let variable = this.model.Variable(config);
     variable.parent = this;
     return variable;
@@ -1096,7 +1095,7 @@ export class Container extends Primitive {
   /**
    * @param {PrimitiveConfig & ValuedConfig & ConverterConfig} config
    */
-  Converter(config={}) {
+  Converter(config = {}) {
     let converter = this.model.Converter(config);
     converter.parent = this;
     return converter;
@@ -1105,7 +1104,7 @@ export class Container extends Primitive {
   /**
    * @param {PrimitiveConfig & StateConfig} config
    */
-  State(config={}) {
+  State(config = {}) {
     let state = this.model.State(config);
     state.parent = this;
     return state;
@@ -1114,7 +1113,7 @@ export class Container extends Primitive {
   /**
    * @param {PrimitiveConfig & ActionConfig} config
    */
-  Action(config={}) {
+  Action(config = {}) {
     let action = this.model.Action(config);
     action.parent = this;
     return action;
@@ -1123,7 +1122,7 @@ export class Container extends Primitive {
   /**
    * @param {PrimitiveConfig & PopulationConfig} config
    */
-  Population(config={}) {
+  Population(config = {}) {
     let population = this.model.Population(config);
     population.parent = this;
     return population;
@@ -1134,7 +1133,7 @@ export class Container extends Primitive {
    * @param {Stock} end
    * @param {(PrimitiveConfig & ValuedConfig & FlowConfig)=} config
    */
-  Flow(start, end, config={}) {
+  Flow(start, end, config = {}) {
     let flow = this.model.Flow(start, end, config);
     flow.parent = this;
     return flow;
@@ -1145,7 +1144,7 @@ export class Container extends Primitive {
    * @param {State} end
    * @param {(PrimitiveConfig & TransitionConfig)=} config
    */
-  Transition(start, end, config={}) {
+  Transition(start, end, config = {}) {
     let transition = this.model.Transition(start, end, config);
     transition.parent = this;
     return transition;
@@ -1156,7 +1155,7 @@ export class Container extends Primitive {
    * @param {Primitive} end
    * @param {(PrimitiveConfig & LinkConfig)=} config
    */
-  Link(start, end, config={}) {
+  Link(start, end, config = {}) {
     let link = this.model.Link(start, end, config);
     link.parent = this;
     return link;

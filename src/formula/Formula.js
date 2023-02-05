@@ -5,7 +5,7 @@ import { fn } from "../CalcMap.js";
 import { stringify, selectFromMatrix, selectFromVector } from "./Utilities.js";
 import { Vector } from "./Vector.js";
 import { createFunctions as generalCreateFunctions } from "./CalcFunctions.js";
-import { createFunctions as modelerCreateFunctions} from "../Functions.js";
+import { createFunctions as modelerCreateFunctions } from "../Functions.js";
 import { ModelError } from "./ModelError.js";
 import { org } from "../../vendor/antlr3-all.js";
 import { FormulaLexer } from "./grammar/FormulaLexer.js";
@@ -14,7 +14,7 @@ import { toHTML } from "../Utilities.js";
 
 
 // Suppress default ANTLR error alert. We handle error differently.
-org.antlr.runtime.BaseRecognizer.prototype.emitErrorMessage = () => {};
+org.antlr.runtime.BaseRecognizer.prototype.emitErrorMessage = () => { };
 
 
 /**
@@ -35,9 +35,9 @@ export function bootCalc(simulate) {
 
 class PrimitiveStore {
   /**
-	 * @param {any} primitive
-	 * @param {string} type
-	 */
+   * @param {any} primitive
+   * @param {string} type
+   */
   constructor(primitive, type) {
     this.primitive = primitive;
     this.type = type; // "value", "totalValue", "object"
@@ -128,7 +128,7 @@ export function evaluateTree(root, varBank, simulate) {
  * @param {any[]=} children
  */
 export class TreeNode {
-  constructor(text, typeName, line, children=[]) {
+  constructor(text, typeName, line, children = []) {
     this.origText = text;
 
     this.text = text.toLowerCase();
@@ -201,6 +201,7 @@ funcEvalMap["LINES"] = function (node, scope, simulate) {
   let response;
   for (let child of node.children) {
     if (child.text === "return") {
+      // eslint-disable-next-line
       throw { returnVal: true, data: evaluateNode(child.children[0], scope, simulate) };
     } else {
       response = evaluateNode(child, scope, simulate);
@@ -429,7 +430,7 @@ function comparisonValid(lhs, rhs) {
       code: 7005
     });
   }
-  if (lhs instanceof Boolean || typeof lhs === "boolean"  || rhs instanceof Boolean || typeof rhs === "boolean" ) {
+  if (lhs instanceof Boolean || typeof lhs === "boolean" || rhs instanceof Boolean || typeof rhs === "boolean") {
     throw new ModelError("Cannot use Booleans in logical inequality comparisons.", {
       code: 7006
     });
@@ -1347,7 +1348,7 @@ function makeFunctionCall(varName, varNames, varDefaults, node, scope, simulate)
 
   let fn = new UserFunction();
 
-  fn.localScope = new Object();
+  fn.localScope = {};
   fn.localScope["nVars"] = varNames.length;
   for (let i = 0; i < varNames.length; i++) {
     fn.localScope[i + ""] = varNames[i];
@@ -1842,6 +1843,7 @@ trimEvalMap["STRING"] = function (node, scope, simulate) {
   } else {
     s = sub.replace(/\n/, "\\n");
   }
+  // eslint-disable-next-line
   s = new String(s);
   // @ts-ignore
   s.vector = new Vector([], simulate, [], simulate.varBank["stringbase"]);

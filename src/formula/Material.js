@@ -5,9 +5,9 @@ import { ModelError } from "./ModelError.js";
 
 export class Material {
   /**
-	 * @param {number} value
-	 * @param {import("./Units").UnitStore=} units
-	 */
+   * @param {number} value
+   * @param {import("./Units").UnitStore=} units
+   */
   constructor(value, units) {
     /** @type {number} */
     this.value = value;
@@ -35,10 +35,10 @@ export class Material {
   }
 
   /**
-	 * @param {import("./Units").UnitStore=} newUnits
+   * @param {import("./Units").UnitStore=} newUnits
    *
-	 * @returns {Material}
-	 */
+   * @returns {Material}
+   */
   forceUnits(newUnits) {
     if (!this.units) {
       this.units = newUnits;

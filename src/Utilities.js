@@ -1,4 +1,5 @@
 
+
 export function isTrue(item) {
   return item === 1 || item === "true" || item === true;
 }
@@ -45,9 +46,9 @@ export function commaStr(nStr) {
     let x = nStr.split(".");
     let x1 = x[0];
     let x2 = x.length > 1 ? "." + x[1] : "";
-    let rgx = /(\d+)(\d{3})/;
-    while (rgx.test(x1)) {
-      x1 = x1.replace(rgx, "$1" + "," + "$2");
+    let reg = /(\d+)(\d{3})/;
+    while (reg.test(x1)) {
+      x1 = x1.replace(reg, "$1,$2");
     }
     return x1 + x2;
   }
@@ -58,7 +59,7 @@ export function commaStr(nStr) {
  * @param {number} value
  * @param {number=} precision
  */
-export function round(value, precision=15) {
+export function round(value, precision = 15) {
   return +value.toPrecision(precision);
 }
 

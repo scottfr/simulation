@@ -8,16 +8,12 @@ In addition to building models directly with the package, `simulation` also supp
 
 ## Installing the package
 
+### Installation with NPM
+
 Node installation:
 
 ```shell
 npm install --save simulation
-```
-
-In the browser you can use the NPM package, or you can use `simulation` without NPM. The code will work without transpilation in modern browsers:
-
-```javascript
-import { Model } from "simulation/src/api/Model.js";
 ```
 
 The rest of this README will assume you are using `simulation` in Node with ES6 module syntax.
@@ -27,6 +23,16 @@ In the README, we will also be using the optional `simulation-viz-console` packa
 ```shell
 npm install --save simulation-viz-console
 ```
+
+### Directly importing the modules
+
+You can also import `simulation` ES6 modules directly from the source code without using NPM:
+
+```javascript
+import { Model } from "simulation/src/api/Model.js";
+```
+
+The code will work without transpilation in modern browsers.
 
 ## Example usage
 
@@ -407,7 +413,7 @@ end loop
 sum
 ```
 
-Custom functions may also be defined
+Custom functions may also be defined:
 
 ```
 function add(x, y)

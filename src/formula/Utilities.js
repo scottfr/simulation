@@ -13,6 +13,7 @@ export function stringify(x, simulate) {
   if (x instanceof Vector) {
     return x.recurseApply((x) => stringify(x, simulate));
   }
+  // eslint-disable-next-line
   let res = new String(x);
   // @ts-ignore
   res.parent = simulate.varBank["stringbase"];

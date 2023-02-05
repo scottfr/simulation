@@ -1,8 +1,8 @@
 export class DNA {
   /**
-	 * @param {import("./api/Blocks").Primitive} primitive
-	 * @param {string=} id
-	 */
+   * @param {import("./api/Blocks").Primitive} primitive
+   * @param {string=} id
+   */
   constructor(primitive, id) {
     this.primitive = primitive;
 

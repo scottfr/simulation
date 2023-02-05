@@ -23,3 +23,21 @@ test("Macros", () => {
   expect(res.series(p1)[3]).toBe(52);
   expect(res.series(p2)[3]).toBe(4);
 });
+
+
+test("Macros time settings", () => {
+  let m = new Model();
+
+  let mString = "x <- removeUnits(timeStep, \"years\")";
+
+  m.globals = mString;
+  expect(m.globals).toBe(mString);
+
+
+  let p1 = m.Variable({
+    name: "p1"
+  });
+  p1.value = "x";
+  let res = m.simulate();
+  expect(res.series(p1)[3]).toBe(1);
+});

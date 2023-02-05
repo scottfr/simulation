@@ -14,10 +14,10 @@ export class RandList {
   }
 
   /**
-	 * @param {number} i
+   * @param {number} i
    *
-	 * @returns {number}
-	 */
+   * @returns {number}
+   */
   get(i) {
     if (i > this.vals.length - 1) {
       for (let j = this.vals.length; j <= i; j++) {
@@ -50,7 +50,7 @@ function getRandPos(simulate) {
  *
  * @return {number}
  */
-export function Rand(simulate, minVal=null, maxVal=null) {
+export function Rand(simulate, minVal = null, maxVal = null) {
   simulate.stochastic = true;
 
   if (minVal !== null && minVal !== undefined) {
@@ -86,7 +86,7 @@ export function Rand(simulate, minVal=null, maxVal=null) {
  *
  * @returns {number}
  */
-export function RandNormal(simulate, mu=null, sigma=null) {
+export function RandNormal(simulate, mu = null, sigma = null) {
   isNormalNumber(mu, "RandNormal", "mu");
   isNormalNumber(sigma, "RandNormal", "sigma");
 
@@ -109,7 +109,7 @@ export function RandNormal(simulate, mu=null, sigma=null) {
  *
  * @returns {number}
  */
-export function RandExp(simulate, lambda=null) {
+export function RandExp(simulate, lambda = null) {
   if (lambda === null) {
     lambda = 1;
   }
@@ -244,14 +244,14 @@ function randomBinomialBtpe(simulate, n, p) {
     if (!(u > p2)) {
       x = xl + (u - p1) / c;
       v = v * c + 1.0 - Math.abs(m - x + 0.5) / p1;
-      if (v > 1.0){
+      if (v > 1.0) {
         continue;
       }
       y = Math.floor(x);
     } else if (!(u > p3)) {
       y = Math.floor(xl + Math.log(v) / laml);
       /* Reject if v==0.0 since previous cast is undefined */
-      if ((y < 0) || (v === 0.0)){
+      if ((y < 0) || (v === 0.0)) {
         continue;
       }
       v = v * (u - p2) * laml;
@@ -284,11 +284,11 @@ function randomBinomialBtpe(simulate, n, p) {
       break;
     } else {
       rho =
-      (k / (nrq)) * ((k * (k / 3.0 + 0.625) + 0.16666666666666666) / nrq + 0.5);
+        (k / (nrq)) * ((k * (k / 3.0 + 0.625) + 0.16666666666666666) / nrq + 0.5);
       t = -k * k / (2 * nrq);
       /* log(0.0) ok here */
       A = Math.log(v);
-      if (A < (t - rho)){
+      if (A < (t - rho)) {
         break;
       }
       if (A > (t + rho)) {
@@ -304,15 +304,15 @@ function randomBinomialBtpe(simulate, n, p) {
       z2 = z * z;
       w2 = w * w;
       if (A > (xm * Math.log(f1 / x1) + (n - m + 0.5) * Math.log(z / w) +
-           (y - m) * Math.log(w * r / (x1 * q)) +
-           (13680. - (462. - (132. - (99. - 140. / f2) / f2) / f2) / f2) / f1 /
-               166320. +
-           (13680. - (462. - (132. - (99. - 140. / z2) / z2) / z2) / z2) / z /
-               166320. +
-           (13680. - (462. - (132. - (99. - 140. / x2) / x2) / x2) / x2) / x1 /
-               166320. +
-           (13680. - (462. - (132. - (99. - 140. / w2) / w2) / w2) / w2) / w /
-               166320.)) {
+        (y - m) * Math.log(w * r / (x1 * q)) +
+        (13680. - (462. - (132. - (99. - 140. / f2) / f2) / f2) / f2) / f1 /
+        166320. +
+        (13680. - (462. - (132. - (99. - 140. / z2) / z2) / z2) / z2) / z /
+        166320. +
+        (13680. - (462. - (132. - (99. - 140. / x2) / x2) / x2) / x2) / x1 /
+        166320. +
+        (13680. - (462. - (132. - (99. - 140. / w2) / w2) / w2) / w2) / w /
+        166320.)) {
         continue;
       }
     }
@@ -412,7 +412,7 @@ export function RandPoisson(simulate, lambda) {
     let k = 0;
     let p = 1;
     // eslint-disable-next-line
-		while (true) {
+    while (true) {
       k = k + 1;
       p = p * Rand(simulate);
       if (!(p > L)) {
@@ -429,7 +429,7 @@ export function RandPoisson(simulate, lambda) {
     let k = Math.log(c) - lambda - Math.log(beta);
 
     // eslint-disable-next-line
-		while (true) {
+    while (true) {
       let u = Rand(simulate);
       let x = (alpha - Math.log((1.0 - u) / u)) / beta;
       let n = Math.floor(x + 0.5);

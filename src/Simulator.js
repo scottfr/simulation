@@ -1,7 +1,8 @@
-import { div, plus, mult,  minus, eq, lessThan, toNum } from "./formula/Formula.js";
+import { div, plus, mult, minus, eq, lessThan, toNum } from "./formula/Formula.js";
 import { TaskQueue, Task } from "./TaskScheduler.js";
 import { checkErr, cleanData, formatSimResults, simpleEquation, updateDisplayed } from "./Modeler.js";
 import { Material } from "./formula/Material.js";
+// eslint-disable-next-line
 import { SState, SFlow, SPopulation, SAgent, updateTrigger, SPrimitive } from "./Primitives.js";
 import { fn } from "./CalcMap.js";
 import { Vector } from "./formula/Vector.js";
@@ -69,12 +70,12 @@ import Big from "../vendor/bigjs/big.js";
 
 /**
  * @typedef {object} DisplayInformationType
+ * @property {boolean=} populated
  * @property {string[]=} ids
  * @property {string[]=} colors
  * @property {string[]=} headers
  * @property {AgentResultsType[]=} agents
- * @property {string[]=} displayedHeaders
- * @property {string[]=} displayedIds
+ * @property {{header: string, id: string, type: string}[]=} displayedItems
  * @property {function[]=} renderers
  * @property {string[]=} elementIds
  * @property {ResultsType=} res
@@ -91,6 +92,17 @@ import Big from "../vendor/bigjs/big.js";
 export class Simulator {
   constructor() {
     this.resultsWindow = undefined;
+
+    /** @type {function} */
+    this.setResultsCallback = undefined;
+    /** @type {function} */
+    this.setStatusCallback = undefined;
+
+    /** @type {function} */
+    this.finished = undefined;
+
+    /** @type {"RUNNING"|"PAUSED"|"TERMINATED"} */
+    this.status = undefined;
 
     /** @type {boolean} */
     this.valueChange = undefined;
@@ -183,6 +195,7 @@ export class Simulator {
     this.timeEnd = new Material(Big(this.timeStart.value).plus(this.timeLength.value).toNumber(), this.timeLength.units);
     this.timeStep = this.simulationModel.solvers.base.timeStep;
     this.userTimeStep = this.simulationModel.solvers.base.userTimeStep;
+    this.timeStepCount = Math.floor(this.timeLength.value / this.userTimeStep.value);
     this.timeUnits = this.timeStart.units;
     this.timeUnits.addBase();
 
@@ -259,16 +272,14 @@ export class Simulator {
     }
   }
 
-  sleep(updateWindow) {
+  sleep(shouldUpdateValues) {
     if (this.config) {
       if (!this.config.silent) {
         this.shouldSleep = true;
-        this.shouldUpdateScripter = updateWindow;
+        this.shouldUpdateValues = shouldUpdateValues;
       } else {
         if (this.config.onPause) {
-
           this.shouldSleep = true;
-
         }
       }
     }
@@ -288,13 +299,19 @@ export class Simulator {
   }
 
   terminate() {
+    this.setStatus("TERMINATED");
+
     if (!this.terminated) {
       clearTimeout(this.timer);
       this.sleep();
       this.terminated = true;
-      if (this.resultsWindow) {
-        this.resultsWindow.scripter.finished();
-      }
+    }
+  }
+
+  setStatus(s) {
+    this.status = s;
+    if (this.setStatusCallback) {
+      this.setStatusCallback(s);
     }
   }
 
@@ -303,6 +320,8 @@ export class Simulator {
    * @returns
    */
   run(config) {
+    this.setStatus("RUNNING");
+
     let me = this;
 
     /**
@@ -360,7 +379,7 @@ export class Simulator {
       this.tasks.cursor = this.tasks.tasks.minNode();
     }
 
-    this.wakeUpTime = (new Date()).getTime();
+    this.wakeUpTime = Date.now();
 
     try {
       while (!this.completed()) {
@@ -370,16 +389,28 @@ export class Simulator {
           for (let solver in this.simulationModel.solvers) {
             updateDisplayed(this.simulationModel.solvers[solver], this);
           }
-          if (this.shouldUpdateScripter) {
-            this.resultsWindow.scripter.endMode = "pause";
-            this.shouldUpdateScripter = false;
+
+          if (this.setResultsCallback) {
+            this.setResultsCallback(formatSimResults(this.results));
           }
+
+          if (this.shouldUpdateValues) {
+            this.setStatus("PAUSED");
+            this.shouldUpdateValues = false;
+          }
+
           if (this.config.onPause) {
             setTimeout(() => {
               let res = formatSimResults(this.results);
               let l = res.data.length;
               let data = res.data[l - 1];
               for (let key in data) {
+                if (key === "time") {
+                  continue;
+                }
+                if (!res.children[key]) {
+                  return; // stale call
+                }
                 if (res.children[key].results.length < l) {
                   res.children[key].results.push(data[key]);
                 }
@@ -402,7 +433,6 @@ export class Simulator {
                 });
                 this.valueChange = true;
               };
-
               this.config.onPause(res);
             }, 10);
           }
@@ -654,15 +684,15 @@ export class Simulator {
     let addRK4Solver = (time, repeat) => {
       /*
 
-			1. (t=0) Calculate rates at t=0, move to t=0.5 (rollback restore stocks)
-			2. (t=0.5) Calculate rates at t=0.5
-			3. (t=0) Use rate of (t=0.5) to move to t=0.5 (rollback restores stocks)
-			4. (t=0.5) Calculate rates at t=0.5
-			5. (t=0) Use rates of (t=0.5 (2)) to move to t=1 (rollback restores stocks)
-			6. (t=1) Calculate rates at t=1
-			7. (t=0) Use average rates to move to t=0
+      1. (t=0) Calculate rates at t=0, move to t=0.5 (rollback restore stocks)
+      2. (t=0.5) Calculate rates at t=0.5
+      3. (t=0) Use rate of (t=0.5) to move to t=0.5 (rollback restores stocks)
+      4. (t=0.5) Calculate rates at t=0.5
+      5. (t=0) Use rates of (t=0.5 (2)) to move to t=1 (rollback restores stocks)
+      6. (t=1) Calculate rates at t=1
+      7. (t=0) Use average rates to move to t=0
 
-			*/
+      */
 
 
       this.tasks.add(new Task({

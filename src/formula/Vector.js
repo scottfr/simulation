@@ -147,7 +147,7 @@ export class Vector {
       if (other instanceof Vector) {
         if (this.names && other.names) {
           let index = other.namesLC.indexOf(this.namesLC[i]);
-          if (this.names.length === 1 && this.names[0] === "*"){
+          if (this.names.length === 1 && this.names[0] === "*") {
             index = -2;
           }
           if (index === -1) {

@@ -117,8 +117,9 @@ export class UnitStore {
           this.toBase = fn["*"](this.toBase, fn.expt(u.scale, exponents[i]));
           names = names.concat(u.target.names);
           names.splice(i, 1);
+          let exp = exponents[i];
           exponents = exponents.concat(u.target.exponents.map((x) => {
-            return x * exponents[i];
+            return x * exp;
           }));
           exponents.splice(i, 1);
           modified = true;

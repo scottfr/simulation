@@ -30,6 +30,7 @@ export function createFunctions(simulate) {
       simulate.config.showNotification("Simulation ended early by a call to stop().");
     }
 
+    // eslint-disable-next-line
     throw {
       simulationCommand: "STOP"
     };
@@ -141,7 +142,7 @@ export function createFunctions(simulate) {
         peak.units = simulate.timeUnits;
       }
     }
-    let position = minus(/** @type {Material} */ (simulate.varBank.time([])), peak);
+    let position = minus(/** @type {Material} */(simulate.varBank.time([])), peak);
     let dist = position.forceUnits(createUnitStore("years", simulate)).value * 2 * 3.14159265359;
     return new Material(Math.cos(dist));
   });
@@ -237,9 +238,9 @@ export function createFunctions(simulate) {
   });
 
   defineFunction(simulate, "Pulse", { params: [{ name: "Start Time", vectorize: true }, { name: "Height", vectorize: true, defaultVal: 1 }, { name: "Width", vectorize: true, defaultVal: 0 }, { name: "Repeat Period", vectorize: true, defaultVal: 0 }] },
-  /**
-   * @param {[Material, Material, Material, Material]} x
-   */
+    /**
+     * @param {[Material, Material, Material, Material]} x
+     */
     (x) => {
 
       /** @type {Material} */
@@ -275,7 +276,7 @@ export function createFunctions(simulate) {
       } else if (greaterThanEq(simulate.time(), start)) {
         let x = minus(simulate.time(), mult(simulate.varBank["floor"]([div(minus(simulate.time(), start), repeat)]), repeat));
         let dv = minus(simulate.time(), start);
-        if (minus(/** @type {Material} */ (simulate.varBank.round([div(dv, repeat)])), div(dv, repeat)).value === 0 || (greaterThanEq(x, start) && lessThanEq(x, plus(start, width)))) {
+        if (minus(/** @type {Material} */(simulate.varBank.round([div(dv, repeat)])), div(dv, repeat)).value === 0 || (greaterThanEq(x, start) && lessThanEq(x, plus(start, width)))) {
           return height;
         }
       }
@@ -284,9 +285,9 @@ export function createFunctions(simulate) {
     });
 
   defineFunction(simulate, "Ramp", { params: [{ name: "Start Time", vectorize: true }, { name: "Finish Time", vectorize: true }, { name: "Height", vectorize: true, defaultVal: 1 }] },
-  /**
-   * @param {[Material, Material, Material]} x
-   */
+    /**
+     * @param {[Material, Material, Material]} x
+     */
     (x) => {
 
       let start = toNum(x[0]);
@@ -309,9 +310,9 @@ export function createFunctions(simulate) {
     });
 
   defineFunction(simulate, "Step", { params: [{ name: "Start Time", vectorize: true }, { name: "Height", vectorize: true, defaultVal: 1 }] },
-  /**
-   * @param {[Material, Material]} x
-   */
+    /**
+     * @param {[Material, Material]} x
+     */
     (x) => {
       let start = toNum(x[0]);
       let height = new Material(1);
@@ -331,11 +332,11 @@ export function createFunctions(simulate) {
   simulate.varBank["staircase"] = simulate.varBank["step"];
 
   defineFunction(simulate, "Delay", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Delay", vectorize: true }, { name: "Initial Value", defaultVal: "None", vectorize: true }] },
-  /**
-   * @param {[SPrimitive, Material, ValueType?]} x
-   *
-   * @returns {ValueType}
-   */
+    /**
+     * @param {[SPrimitive, Material, ValueType?]} x
+     *
+     * @returns {ValueType}
+     */
     (x) => {
       if (toNum(x[1]).value < 0) {
         throw new ModelError("The delay must be greater than or equal to 0.", {
@@ -364,7 +365,7 @@ export function createFunctions(simulate) {
       });
     });
 
-  defineFunction(simulate, "Delay3", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "Expression", noVector: true }, { name: "Delay", vectorize: true  }, { name: "Initial Value", vectorize: true, defaultVal: "None" }] },
+  defineFunction(simulate, "Delay3", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "Expression", noVector: true }, { name: "Delay", vectorize: true }, { name: "Initial Value", vectorize: true, defaultVal: "None" }] },
     (_x) => {
       throw new ModelError("Delay3() may only be called in a top level primitive equation", {
         code: 1054
@@ -493,6 +494,11 @@ export function createFunctions(simulate) {
       let res = [];
       let q = -1;
       for (let item of population.items) {
+        if (!(item instanceof SAgent)) {
+          throw new ModelError("Cannot take \"Value()\" of vector that does not contain agents.", {
+            code: 1172
+          });
+        }
         if (q !== -1) {
           res.push(item.children[q]);
         } else {
@@ -564,11 +570,11 @@ export function createFunctions(simulate) {
   });
 
   defineFunction(simulate, "FindIndex", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Index", noVector: true, needNum: true, noUnits: true }] },
-  /**
-   * @param {[Vector, Material]} x
-   *
-   * @returns
-   */
+    /**
+     * @param {[Vector, Material]} x
+     *
+     * @returns
+     */
     (x) => {
       let population = x[0];
       for (let item of population.items) {
@@ -583,11 +589,11 @@ export function createFunctions(simulate) {
     });
 
   defineFunction(simulate, "FindState", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { needPrimitive: true, name: "[State]" }] },
-  /**
-   * @param {[Vector, SPrimitive]} x
-   *
-   * @returns
-   */
+    /**
+     * @param {[Vector, SPrimitive]} x
+     *
+     * @returns
+     */
     (x) => {
 
       let population = x[0];
@@ -611,11 +617,11 @@ export function createFunctions(simulate) {
     });
 
   defineFunction(simulate, "FindNotState", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { needPrimitive: true, name: "[State]" }] },
-  /**
-   * @param {[Vector, SPrimitive]} x
-   *
-   * @returns
-   */
+    /**
+     * @param {[Vector, SPrimitive]} x
+     *
+     * @returns
+     */
     (x) => {
 
       let population = x[0];
@@ -638,11 +644,11 @@ export function createFunctions(simulate) {
     });
 
   defineFunction(simulate, "FindNearby", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Target" }, { name: "Distance Limit", needNum: true, noVector: true }] },
-  /**
-   * @param {[Vector, SPrimitive, Material]} x
-   *
-   * @returns
-   */
+    /**
+     * @param {[Vector, SPrimitive, Material]} x
+     *
+     * @returns
+     */
     (x) => {
       let population = x[0];
 
@@ -669,11 +675,11 @@ export function createFunctions(simulate) {
     });
 
   defineFunction(simulate, "FindNearest", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Target" }, { noUnits: true, noVector: true, needNum: true, defaultVal: 1, name: "Count" }] },
-  /**
-   * @param {[Vector, SPrimitive, Material]} x
-   *
-   * @returns
-   */
+    /**
+     * @param {[Vector, SPrimitive, Material]} x
+     *
+     * @returns
+     */
     (x) => {
       let population = x[0];
       let count = 1;
@@ -747,10 +753,10 @@ export function createFunctions(simulate) {
 
 
   defineFunction(simulate, "FindFurthest", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Target" }, { noUnits: true, noVector: true, needNum: true, defaultVal: 1, name: "Count" }] },
-  /**
-   * @param {[Vector, SPrimitive, Material]} x
-   * @returns
-   */
+    /**
+     * @param {[Vector, SPrimitive, Material]} x
+     * @returns
+     */
     (x) => {
 
       let population = x[0];
@@ -826,11 +832,11 @@ export function createFunctions(simulate) {
   });
 
   defineFunction(simulate, "Connect", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Agent 1]" }, { name: "[Agent 2]" }, { name: "Weight", defaultVal: "missing", needNum: true }] },
-  /**
-   * @param {[SAgent, SAgent, Material|"missing"]} x
-   *
-   * @returns
-   */
+    /**
+     * @param {[SAgent, SAgent, Material|"missing"]} x
+     *
+     * @returns
+     */
     (x) => {
 
       let weight = undefined;
@@ -850,11 +856,11 @@ export function createFunctions(simulate) {
     });
 
   defineFunction(simulate, "Unconnect", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Agent 1]" }, { name: "[Agent 2]" }] },
-  /**
-   * @param {[SAgent, SAgent]} x
-   *
-   * @returns
-   */
+    /**
+     * @param {[SAgent, SAgent]} x
+     *
+     * @returns
+     */
     (x) => {
       if (x[1] instanceof Vector) {
         x[1].items.forEach((a) => {
@@ -882,9 +888,9 @@ export function createFunctions(simulate) {
   });
 
   defineFunction(simulate, "SetConnectionWeight", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Agent 1]" }, { name: "[Agent 2]" }, { name: "Weight", needNum: true }] },
-  /**
-   * @param {[SAgent, SAgent|Vector, Material]} x
-   */
+    /**
+     * @param {[SAgent, SAgent|Vector, Material]} x
+     */
     (x) => {
       if (x[1] instanceof Vector) {
         x[1].items.forEach((a) => {
@@ -940,10 +946,10 @@ export function createFunctions(simulate) {
   });
 
   defineFunction(simulate, "SetLocation", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Agent]" }, { needVector: true, name: "Direction" }] },
-  /**
-   * @param {[SAgent, Vector<Material>]} x
-   * @returns
-   */
+    /**
+     * @param {[SAgent, Vector<Material>]} x
+     * @returns
+     */
     (x) => {
       let v = toNum(x[1]);
       let agent = x[0];
@@ -956,10 +962,10 @@ export function createFunctions(simulate) {
     });
 
   defineFunction(simulate, "Move", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Mover]" }, { needVector: true, name: "Direction" }] },
-  /**
-   * @param {[SAgent, Vector<Material>]} x
-   * @returns
-   */
+    /**
+     * @param {[SAgent, Vector<Material>]} x
+     * @returns
+     */
     (x) => {
       let v = toNum(x[1]);
       shiftLocation(x[0], plus(x[0].location, v));
@@ -1009,10 +1015,10 @@ export function createFunctions(simulate) {
   }
 
   defineFunction(simulate, "MoveTowards", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Mover]" }, { name: "[Target]" }, { name: "Distance", noVector: true, needNum: true }] },
-  /**
-   * @param {[SAgent, Vector<Material>, Material]} x
-   * @returns
-   */
+    /**
+     * @param {[SAgent, Vector<Material>, Material]} x
+     * @returns
+     */
     (x) => {
 
       let loc1 = locationValue(x[0]);

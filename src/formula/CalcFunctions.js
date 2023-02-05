@@ -632,9 +632,9 @@ export function createFunctions(simulate) {
     }
   },
   /**
-   * @param {Vector} x
-   * @returns
-   */
+     * @param {Vector} x
+     * @returns
+     */
   (x) => {
     let res = x.stackApply((x) => {
       let items = [];
@@ -911,10 +911,10 @@ export function createFunctions(simulate) {
   });
 
   defineFunction(simulate, "Min", { params: { name: "Items..." }, prep: joinVector },
-  /**
-   * @param {Vector} x
-   * @returns
-   */
+    /**
+     * @param {Vector} x
+     * @returns
+     */
     (x) => {
       let res = x.stackApply((v) => {
         let x = v.items;
@@ -940,10 +940,10 @@ export function createFunctions(simulate) {
     return simulate.varBank["min"](x);
   });
   defineFunction(simulate, "Mean", { params: { name: "Items..." }, prep: joinArray },
-  /**
-   * @param {any[]} x
-   * @returns
-   */
+    /**
+     * @param {any[]} x
+     * @returns
+     */
     (x) => {
       let sum = x[0];
       for (let i = 1; i < x.length; i++) {
@@ -955,10 +955,10 @@ export function createFunctions(simulate) {
     return simulate.varBank["mean"](x);
   });
   defineFunction(simulate, "Sum", { params: { name: "Items..." }, prep: joinArray },
-  /**
-   * @param {any[]} x
-   * @returns
-   */
+    /**
+     * @param {any[]} x
+     * @returns
+     */
     (x) => {
       let sum = x[0];
 
@@ -1068,7 +1068,7 @@ export function createFunctions(simulate) {
     if (!x[0].names) {
       return new Vector([], simulate);
     }
-    return new Vector(x[0].names.filter(x => x !== undefined ).map(x => stringify(x, simulate)), simulate);
+    return new Vector(x[0].names.filter(x => x !== undefined).map(x => stringify(x, simulate)), simulate);
   });
   defineFunction(simulate, "Values", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
     return new Vector(x[0].items, simulate);
@@ -1427,13 +1427,13 @@ export function createFunctions(simulate) {
   });
 
   defineFunction(simulate, "Confirm", { params: [{ name: "Message", allowString: true, allowBoolean: true }] }, (x) => {
-    if (typeof confirm === "undefined") {
+    if (typeof window === "undefined" || window.confirm === "undefined") {
       throw new ModelError("Confirm() is not implemented on this platform.", {
         code: 6050
       });
     }
 
-    return confirm(x[0]);
+    return window.confirm(x[0]);
   });
 
   defineFunction(simulate, "Parse", { object: StringObject, params: [{ name: "String", allowString: true }] }, (x) => {
@@ -1555,14 +1555,14 @@ export function defineFunction(simulate, name, definition, fn) {
     objectFnName = name + "(items...)";
   }
 
-  let f = function (x, id, _ls, config={}) {
+  let f = function (x, id, _ls, config = {}) {
     let fnName;
     if (config.isObjectCaller) {
       // e.g. [test].x()
       fnName = objectFnName;
     } else {
       // e.g. x([test])
-      fnName =standardFnName;
+      fnName = standardFnName;
     }
 
     if (definition.prep) {
@@ -1638,7 +1638,7 @@ export function defineFunction(simulate, name, definition, fn) {
         }
       }
       if (!config.allowString && !config.needString
-				&& (typeof x[i] === "string" || x[i] instanceof String)) {
+        && (typeof x[i] === "string" || x[i] instanceof String)) {
         throw new ModelError(`${fnName} does not accept string values for the parameter '${config.name}'.`, {
           code: 6062
         });

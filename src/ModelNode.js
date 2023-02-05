@@ -1,4 +1,5 @@
 import { DOMParser } from "../vendor/xmldom/dom-parser.js";
+// eslint-disable-next-line
 import { Stock, Variable, State, Action, Population, Transition, Flow, Link, Folder, Agent, Converter, Primitive } from "./api/Blocks.js";
 
 
@@ -34,7 +35,7 @@ export class ModelNode {
    * @param {*} config
    * @returns {Primitive}
    */
-  primitive(model, config={}) {
+  primitive(model, config = {}) {
     if (this._primitive === undefined) {
       if (this.value.nodeName === "Stock") {
         this._primitive = new Stock(this, config);
@@ -54,7 +55,7 @@ export class ModelNode {
         this._primitive = new Transition(this, config);
       } else if (this.value.nodeName === "Link") {
         this._primitive = new Link(this, config);
-      }  else if (this.value.nodeName === "Folder") {
+      } else if (this.value.nodeName === "Folder") {
         if (this.getAttribute("Type") === "Agent") {
           this._primitive = new Agent(this, config);
         } else {
@@ -117,7 +118,7 @@ export class ModelNode {
     let start = " ".repeat(indent) + `<${this.value.nodeName}${this.getAttribute("name") ? " [" + this.getAttribute("name") + "]" : ""}>`;
     let end = `</${this.value.nodeName}>`;
 
-    return start + (this.children.length? "\n" : "" ) + this.children.map(child => " " .repeat(indent) + child.toString(indent + 2)).join("\n") + (this.children.length ? ("\n" + " ".repeat(indent)) : "" ) +  end;
+    return start + (this.children.length ? "\n" : "") + this.children.map(child => " ".repeat(indent) + child.toString(indent + 2)).join("\n") + (this.children.length ? ("\n" + " ".repeat(indent)) : "") + end;
   }
 }
 
@@ -138,7 +139,7 @@ export function loadXML(modelString) {
   graph.children[0].value = { nodeName: "root" };
   graph.children[0].id = "1";
 
-  let connectors = primitives(/** @type {any} */ (graph), ["Flow", "Link", "Transition"]);
+  let connectors = primitives(/** @type {any} */(graph), ["Flow", "Link", "Transition"]);
 
 
   let items = primitives(graph);

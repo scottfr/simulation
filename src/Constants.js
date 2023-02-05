@@ -57,7 +57,6 @@ nodeBase.display.setAttribute("Image", "Display");
 nodeBase.display.setAttribute("FlipHorizontal", "false");
 nodeBase.display.setAttribute("FlipVertical", "false");
 nodeBase.display.setAttribute("LabelPosition", "Bottom");
-nodeBase.display.setAttribute("legendPosition", "Automatic");
 
 function setValuedProperties(cell) {
   cell.setAttribute("Units", "Unitless");

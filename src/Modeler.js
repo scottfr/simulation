@@ -1,5 +1,7 @@
 import { Simulator } from "./Simulator.js";
+// eslint-disable-next-line
 import { SAgent, SPopulation, STransition, SAction, SState, SStock, SVariable, SFlow, SConverter, Placeholder, SPrimitive } from "./Primitives.js";
+// eslint-disable-next-line
 import { Action, Agent, Converter, Flow, Population, Primitive, State, Stock, Transition, ValuedPrimitive, Variable } from "./api/Blocks.js";
 import { Material } from "./formula/Material.js";
 import { div, plus, mult, evaluateTree, trimTree, trueValue, eq, createTree, bootCalc, TreeNode } from "./formula/Formula.js";
@@ -98,7 +100,7 @@ export function checkErr(err, config, simulate) {
     }
 
     errOut = {
-      error: "An unknown simulation error occurred. Please report this issue to the Insight Maker team.",
+      error: "An unknown simulation error occurred. Please report this issue to the Insight Maker team at <a href='mailto:support@insightmaker.com' style='color: white'>support@insightmaker.com</a>.",
       errorPrimitive: null,
       errorCode: 1
     };
@@ -141,8 +143,14 @@ function innerRunSimulation(simulate, config) {
   simulate.evaluatingLine = null;
 
   if (config.resultsWindow) {
+    if (!config.resultsWindow.windowContext.simulate.completed()) {
+      // kill simulation if still running
+      config.resultsWindow.windowContext.simulate.terminate();
+    }
     simulate.resultsWindow = config.resultsWindow;
-    config.resultsWindow.simulate = simulate;
+    config.resultsWindow.windowContext.simulate = simulate;
+    config.resultsWindow.data.simulation = simulate;
+    config.resultsWindow.windowContext.componentRef.rerender();
   }
 
   bootCalc(simulate);
@@ -290,6 +298,10 @@ function innerRunSimulation(simulate, config) {
     solver.displayed = [];
   }
 
+
+  // Initialize actual simulation
+  simulate.setup(model);
+
   if (simulate.model.globals !== undefined) {
     try {
       evaluateGlobals(simulate.model.globals, simulate);
@@ -300,15 +312,21 @@ function innerRunSimulation(simulate, config) {
 
       if (err instanceof ModelError) {
         msg = msg + "<br/><br/>" + err.message;
-      } else if (err.toString) {
-        if (err.match && err.match(/line (\d+)/i)) {
-          let l = err.match(/line (\d+)/i)[1];
+      } else {
+        if (err.toString) {
+          if (err.match && err.match(/line (\d+)/i)) {
+            let l = err.match(/line (\d+)/i)[1];
 
-          annotations.push({
-            type: "error",
-            row: l !== undefined ? l - 1 : simulate.evaluatingLine - 1,
-            text: err
-          });
+            annotations.push({
+              type: "error",
+              row: l !== undefined ? l - 1 : simulate.evaluatingLine - 1,
+              text: err
+            });
+          }
+        }
+        
+        if (config.processError) {
+          config.processError(err);
         }
       }
 
@@ -362,7 +380,7 @@ function innerRunSimulation(simulate, config) {
       x.geoDimUnits = item.geoUnits;
       x.geoDimUnitsObject = createUnitStore(item.geoUnits, simulate, item);
       try {
-        x.geoWidth = simpleUnitsTest(/** @type {Material} */ (simpleEquation(item.geoWidth, simulate)), x.geoDimUnitsObject, simulate, item);
+        x.geoWidth = simpleUnitsTest(/** @type {Material} */(simpleEquation(item.geoWidth, simulate)), x.geoDimUnitsObject, simulate, item);
       } catch (_err) {
         throw new ModelError(`Invalid width for the agent population <i>[${toHTML(item.name)}]</i>.`, {
           primitive: item,
@@ -371,7 +389,7 @@ function innerRunSimulation(simulate, config) {
         });
       }
       try {
-        x.geoHeight = simpleUnitsTest(/** @type {Material} */ (simpleEquation(item.geoHeight, simulate)), x.geoDimUnitsObject, simulate, item);
+        x.geoHeight = simpleUnitsTest(/** @type {Material} */(simpleEquation(item.geoHeight, simulate)), x.geoDimUnitsObject, simulate, item);
       } catch (_err) {
         throw new ModelError(`Invalid height for the agent population <i>[${toHTML(item.name)}]</i>.`, {
           primitive: item,
@@ -465,10 +483,6 @@ function innerRunSimulation(simulate, config) {
   }
 
 
-  // Initialize actual simulation
-  simulate.setup(model);
-
-
   for (let submodelId in model.submodels) {
     let submodel = model.submodels[submodelId];
     for (let j = 0; j < submodel.size; j++) {
@@ -528,9 +542,12 @@ function innerRunSimulation(simulate, config) {
     timeUnits: simulate.timeUnitsString
   };
   simulate.displayInformation = {
+    populated: false,
     ids: [],
     times: [],
-    objects: []
+    objects: [],
+    maps: [],
+    histograms: []
   };
 
   model.submodels["base"].agents[0].children.forEach((x) => {
@@ -568,40 +585,8 @@ function innerRunSimulation(simulate, config) {
     if (hasCompletedFirstPass) {
       return;
     }
-    hasCompletedFirstPass= true;
-    if (config.resultsWindow) {
-
-      config.resultsWindow.displayInformation.store.suspendEvents();
-      config.resultsWindow.displayInformation.store.maxLoaded = -1;
-
-      config.resultsWindow.displayInformation.store.clearFilter();
-
-      config.resultsWindow.displayInformation.store.removeAll();
-
-      simulate.displayInformation = config.resultsWindow.displayInformation;
-
-      let scripter = config.resultsWindow.displayInformation.scripter;
-
-      scripter.simulator = simulate;
-
-      scripter.playBut.setGlyph(0xf04c);
-      scripter.combo.setValue(-1);
-      scripter.time = 0;
-      scripter.timeIndex = 0;
-      scripter.isFinished = false;
-      scripter.updatingSlider = true;
-      scripter.slider.setValue(scripter.minTime);
-      scripter.updatingSlider = false;
-
-      scripter.advanceTimer();
-
-      config.resultsWindow.displayInformation.store.resumeEvents();
-
-      clearInterval(scripter.animInter);
-      scripter.animInter = setInterval(() => {
-        scripter.advanceTimer();
-      }, 200);
-
+    hasCompletedFirstPass = true;
+    if (simulate.displayInformation.populated) {
 
       for (let i = 0; i < simulate.displayInformation.origIds.length; i++) {
 
@@ -629,11 +614,11 @@ function innerRunSimulation(simulate, config) {
       }
 
     } else {
+      simulate.displayInformation.populated = true;
       simulate.displayInformation.colors = [];
       simulate.displayInformation.headers = [];
       simulate.displayInformation.agents = [];
-      simulate.displayInformation.displayedHeaders = [];
-      simulate.displayInformation.displayedIds = [];
+      simulate.displayInformation.displayedItems = [];
       simulate.displayInformation.renderers = [];
       simulate.displayInformation.elementIds = [];
       simulate.displayInformation.res = simulate.results;
@@ -646,8 +631,11 @@ function innerRunSimulation(simulate, config) {
         let object = simulate.displayInformation.objects[i];
         let dna = object.dna;
 
-        simulate.displayInformation.displayedIds.push(id);
-        simulate.displayInformation.displayedHeaders.push(dna.name);
+        simulate.displayInformation.displayedItems.push({
+          id,
+          header: dna.name,
+          type: dna.primitive._node.value.nodeName
+        });
 
 
         if (object instanceof SPopulation) {
@@ -714,28 +702,12 @@ function innerRunSimulation(simulate, config) {
 
       }
 
-      let storeFields = [{
-        type: "float",
-        name: "Time"
-      }, {
-        type: "int",
-        name: "id"
-      }];
-
-      for (let i = 0; i < simulate.displayInformation.elementIds.length; i++) {
-        storeFields.push({
-          type: "auto",
-          name: simulate.displayInformation.elementIds[i],
-          defaultValue: undefined
-        });
-      }
+      
 
 
-      simulate.displayInformation.store = new Ext.data.Store({
-        fields: storeFields,
-        data: undefined
-      });
-      simulate.displayInformation.store.maxLoaded = -1;
+      simulate.displayInformation.store = {
+        data: []
+      };
       simulate.displayInformation.ids = ids;
     }
   }
@@ -759,9 +731,13 @@ function innerRunSimulation(simulate, config) {
     config.onSuccess = function (res) {
       completedFirstPass(); // simulation may have terminated via stop() before first pass
 
-      updateDisplayed(null, simulate);
+      for (let solver in simulate.simulationModel.solvers) {
+        updateDisplayed(simulate.simulationModel.solvers[solver], simulate);
+      }
 
-      simulate.resultsWindow.results = formatSimResults(simulate.results);
+      if (simulate.setResultsCallback) {
+        simulate.setResultsCallback(formatSimResults(simulate.results));
+      }
 
       if (oldSuccess) {
         oldSuccess(res);
@@ -770,7 +746,6 @@ function innerRunSimulation(simulate, config) {
 
     config.onCompletedFirstPass = function () {
       completedFirstPass();
-
     };
 
 
@@ -785,17 +760,25 @@ function innerRunSimulation(simulate, config) {
 
 
       if (!simulate.shouldSleep) {
-        let timeTaken = new Date().getTime() - simulate.wakeUpTime;
+        let timeTaken = Date.now() - simulate.wakeUpTime;
+        
+        let complexityMultiplier = 1;
+        if (simulate.results.times.length > 20000) {
+          complexityMultiplier = 4;
+        } else if (simulate.results.times.length > 5000) {
+          complexityMultiplier = 2;
+        } else if (simulate.results.times.length > 1000) {
+          complexityMultiplier = 1.3;
+        }
 
-        if ((!simulate.resultsWindow && timeTaken > 100) || timeTaken > 600) {
-
+        if ((!simulate.resultsWindow && timeTaken > 100 * complexityMultiplier) || timeTaken > 600 * complexityMultiplier) {
           updateDisplayed(solver, simulate);
           updated = true;
 
           // @ts-ignore
           simulate.timer = setTimeout(() => {
             simulate.resume();
-          }, 20);
+          }, 20 * Math.pow(complexityMultiplier, 1.5));
 
           simulate.sleep();
         }
@@ -823,9 +806,8 @@ function innerRunSimulation(simulate, config) {
         // pass
       }
 
-      if (simulate.resultsWindow) {
-        simulate.resultsWindow.scripter.pause(false);
-        simulate.resultsWindow.scripter.finished();
+      if (simulate.finished) {
+        simulate.finished();
       }
 
       if (oldError) {
@@ -844,7 +826,7 @@ function innerRunSimulation(simulate, config) {
  *
  * @returns
  */
-export function cleanData(x, removeVectors=false) {
+export function cleanData(x, removeVectors = false) {
   if (x instanceof Vector) {
     if (removeVectors) {
       if (x.names && x.names.length) {
@@ -891,10 +873,24 @@ export function formatSimResults(res) {
     r.errorPrimitive = null;
   }
   r.value = function (item) {
-    return cleanData(this.children[item.id].results, true);
+    if (!item) {
+      throw new Error("Cannot get result value() of null or undefined primitive.");
+    }
+    let entry = this.children[item.id];
+    if (!entry) {
+      throw new Error("Cannot find primitive in value() results.");
+    }
+    return cleanData(entry.results, true);
   };
   r.lastValue = function (item) {
-    return cleanData(this.children[item.id].results[this.children[item.id].results.length - 1], true);
+    if (!item) {
+      throw new Error("Cannot get result lastValue() of null or undefined primitive.");
+    }
+    let entry = this.children[item.id];
+    if (!entry) {
+      throw new Error("Cannot find primitive in lastValue() results.");
+    }
+    return cleanData(entry.results[entry.results.length - 1], true);
   };
   if (r.times) {
     r.periods = r.times.length;
@@ -1001,7 +997,7 @@ export function simpleNum(mat, units, simulate) {
  *
  * @returns {T extends Vector ? Vector : Material}
  */
-export function simpleUnitsTest(mat, units, simulate, primitive=null, showEditor=false, fallbackError="Unknown simpleUnits type") {
+export function simpleUnitsTest(mat, units, simulate, primitive = null, showEditor = false, fallbackError = "Unknown simpleUnits type") {
   if (mat instanceof Vector) {
     return /** @type {any} */ (new Vector(mat.items.map((x) => {
       return simpleUnitsTest(x, units, simulate, primitive, showEditor, fallbackError);
@@ -1223,7 +1219,7 @@ function getDNA(node, submodel, solvers, simulate) {
       }
     }
 
-    dna.source = node.input === "Time" ? node.input: node.input.id;
+    dna.source = node.input === "Time" ? node.input : node.input.id;
 
     for (let i = 0; i < data.length; i++) {
       inp.push(new Material(data[i].x, myU));
@@ -1604,7 +1600,7 @@ function buildPlacements(submodel, simulate) {
       let n = getPrimitiveNeighborhood(submodel, submodel.dna, simulate, []);
       // @ts-ignore
       n.self = s;
-      s.location = simpleUnitsTest(/** @type {Vector} */ (simpleEquation(submodel.placementFunction, simulate, {
+      s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation(submodel.placementFunction, simulate, {
         "-parent": simulate.varBank,
         "self": s
       }, n)), submodel.geoDimUnitsObject, simulate, null, null, "Agent placement functions must return a two element vector");
@@ -1636,7 +1632,7 @@ function buildPlacements(submodel, simulate) {
     submodel.agents.forEach((s) => {
       let xPos = (j % wCount + 0.5) / wCount;
       let yPos = (Math.floor(j / wCount) + 0.5) / hCount;
-      s.location = simpleUnitsTest(/** @type {Vector} */ (simpleEquation("{x: x*width(self), y: y*height(self)}", simulate, {
+      s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation("{x: x*width(self), y: y*height(self)}", simulate, {
         "self": s,
         "x": new Material(xPos),
         "y": new Material(yPos),
@@ -1648,7 +1644,7 @@ function buildPlacements(submodel, simulate) {
     tree = trimTree(createTree("{width(self), height(self)}/2+{sin(index(self)/size*2*3.14159), cos(index(self)/size*2*3.14159)}*{width(self), height(self)}/2"), {}, simulate);
     let size = new Material(submodel.agents.length);
     submodel.agents.forEach((s) => {
-      s.location = simpleUnitsTest(/** @type {Vector} */ (simpleEquation("{width(self), height(self)}/2+{sin(index(self)/size*2*3.14159), cos(index(self)/size*2*3.14159)}*{width(self), heigh(self)}/2", simulate, {
+      s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation("{width(self), height(self)}/2+{sin(index(self)/size*2*3.14159), cos(index(self)/size*2*3.14159)}*{width(self), heigh(self)}/2", simulate, {
         "self": s,
         "size": size,
         "-parent": simulate.varBank
@@ -1844,27 +1840,21 @@ function modelType(node) {
  * @param {import("./Simulator").Simulator} simulate
  */
 export function updateDisplayed(solver, simulate) {
-  let displayed = solver ? solver.displayed : [];
-  let k;
+  let displayed = solver.displayed;
 
   if (simulate.displayInformation.store) {
-    if (displayed.length > 0) {
-      let storeData = [];
-      let maxTime = solver.maxLoaded;
-      maxTime = maxTime !== undefined ? maxTime + 1 : 0;
-      let maxInData = solver.maxLoaded;
-      for (k = maxTime; k < simulate.results.times.length; k++) {
-        let inStore = simulate.displayInformation.store.getById(k);
-        let d = {};
-        if (!inStore) {
-          d["id"] = k;
-          d["Time"] = simulate.results.times[k];
-        }
+    for (let k = simulate.displayInformation.store.data.length; k < simulate.results.times.length; k++) {
+      let inStore = simulate.displayInformation.store.data[k];
+      let d = {};
+      if (!inStore) {
+        d["id"] = k;
+        d["Time"] = simulate.results.times[k];
+      }
 
+      if (displayed.length > 0) {
         if (simulate.results.data[k][displayed[0].id] === undefined) {
           // continue;
         } else {
-          maxInData = k;
           for (let j = 0; j < displayed.length; j++) {
 
             let i = simulate.displayInformation.ids.indexOf(displayed[j].id);
@@ -1916,40 +1906,17 @@ export function updateDisplayed(solver, simulate) {
             }
           }
         }
-
-        if (inStore) {
-          inStore.set(d);
-          inStore.commit();
-        } else {
-          storeData.push(d);
-        }
       }
-      solver.maxLoaded = maxInData;
-      simulate.displayInformation.store.maxLoaded = Math.max(simulate.displayInformation.store.maxLoaded, solver.maxLoaded);
 
-      simulate.displayInformation.store.suspendEvents();
-      simulate.displayInformation.store.add(storeData);
-      simulate.displayInformation.store.resumeEvents();
-      simulate.displayInformation.store.filter();
+      if (inStore) {
+        Object.assign(inStore, d);
+      } else {
+        simulate.displayInformation.store.data.push(d);
+      }
     }
 
     if (!simulate.resultsWindow) {
       simulate.resultsWindow = simulate.config.createResultsWindow(simulate);
-
-      simulate.resultsWindow.scripter.loadTime(0);
-
-      let period = simulate.resultsWindow.scripter.combo.getValue() === -1 ? 200 : 100 / Math.min(0.5, simulate.resultsWindow.scripter.combo.getValue());
-
-      let s = simulate.resultsWindow.scripter;
-      simulate.resultsWindow.scripter.animInter = setInterval(() => {
-        s.advanceTimer();
-      }, period);
-    }
-
-    simulate.resultsWindow.sliders = simulate.sliders;
-
-    if (k === simulate.displayInformation.times.length) {
-      simulate.resultsWindow.scripter.finished();
     }
   }
 }
@@ -2158,7 +2125,7 @@ const MACRO_FNS = {
         rate: "((i) - [Omega]) / (p)",
         nonNegative: false
       });
-      i._node.id ="" +  Math.random();
+      i._node.id = "" + Math.random();
 
 
 
@@ -2537,7 +2504,7 @@ const MACRO_FNS_NAMES = Object.keys(MACRO_FNS).filter(x => !x.startsWith("_"));
  *
  * @returns {TreeNode}
  */
-function replaceMacros(primitive, primitiveDNA, node, submodel, solvers, simulate, isInitial, assigns=[]) {
+function replaceMacros(primitive, primitiveDNA, node, submodel, solvers, simulate, isInitial, assigns = []) {
   let macroName;
   let parameters;
 
@@ -2553,8 +2520,8 @@ function replaceMacros(primitive, primitiveDNA, node, submodel, solvers, simulat
       node.children.length === 3
       && node.children[0].typeName === "PRIMITIVE"
       && (node.children[1].typeName === "SELECTOR"
-      && node.children[1].children[0].typeName === "DOTSELECTOR"
-      && MACRO_FNS_NAMES.includes(node.children[1].children[0].children[0].text))
+        && node.children[1].children[0].typeName === "DOTSELECTOR"
+        && MACRO_FNS_NAMES.includes(node.children[1].children[0].children[0].text))
       && node.children[2].typeName === "FUNCALL"
     ) {
       macroName = node.children[1].children[0].children[0].text;

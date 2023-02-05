@@ -1,6 +1,7 @@
 import { loadXML, modelNodeClone, ModelNode, primitives } from "../ModelNode.js";
 import { runSimulation } from "../Modeler.js";
 import { nodeBase } from "../Constants.js";
+// eslint-disable-next-line
 import { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder } from "./Blocks.js";
 import { Results } from "./Results.js";
 import { SimulationError } from "./SimulationError.js";
@@ -91,7 +92,7 @@ export class Model {
   /**
    * @param {ModelConfig=} config
    */
-  constructor(config={}) {
+  constructor(config = {}) {
     this._graph = new ModelNode();
     this._graph.id = "1";
     this._graph.addChild(new ModelNode());
@@ -186,7 +187,7 @@ export class Model {
    *
    * @return {Stock}
    */
-  Stock(config={}) {
+  Stock(config = {}) {
     let stock = /** @type {Stock} */ (this._createNode("stock").primitive(this, excludeKeys(config, ["name"])));
     stock.name = config.name || "New Stock";
     stock.model = this;
@@ -198,7 +199,7 @@ export class Model {
    *
    * @return {Variable}
    */
-  Variable(config={}) {
+  Variable(config = {}) {
     let variable = this._createNode("variable").primitive(this, excludeKeys(config, ["name"]));
     variable.name = config.name || "New Variable";
     variable.model = this;
@@ -210,7 +211,7 @@ export class Model {
    *
    * @return {Converter}
    */
-  Converter(config={}) {
+  Converter(config = {}) {
     let converter = this._createNode("converter").primitive(this, excludeKeys(config, ["name"]));
     converter.name = config.name || "New Converter";
     converter.model = this;
@@ -222,7 +223,7 @@ export class Model {
    *
    * @return {State}
    */
-  State(config={}) {
+  State(config = {}) {
     let state = this._createNode("state").primitive(this, excludeKeys(config, ["name"]));
     state.name = config.name || "New State";
     state.model = this;
@@ -234,7 +235,7 @@ export class Model {
    *
    * @return {Action}
    */
-  Action(config={}) {
+  Action(config = {}) {
     let action = this._createNode("action").primitive(this, excludeKeys(config, ["name"]));
     action.name = config.name || "New Action";
     action.model = this;
@@ -246,7 +247,7 @@ export class Model {
    *
    * @return {Population}
    */
-  Population(config={}) {
+  Population(config = {}) {
     let population = this._createNode("agents").primitive(this, excludeKeys(config, ["name"]));
     population.name = config.name || "New Population";
     population.model = this;
@@ -260,7 +261,7 @@ export class Model {
    *
    * @return {Flow}
    */
-  Flow(start, end, config={}) {
+  Flow(start, end, config = {}) {
     let flow = this._createConnector("flow", start || config.start || null, end || config.end || null).primitive(this, excludeKeys(config, ["name", "start", "end"]));
     flow.name = config.name || "New Flow";
     flow.model = this;
@@ -274,8 +275,8 @@ export class Model {
    *
    * @return {Transition}
    */
-  Transition(start, end, config={}) {
-    let transition = this._createConnector("transition", start || config.start || null, end ||config.end || null).primitive(this, excludeKeys(config, ["name", "start", "end"]));
+  Transition(start, end, config = {}) {
+    let transition = this._createConnector("transition", start || config.start || null, end || config.end || null).primitive(this, excludeKeys(config, ["name", "start", "end"]));
     transition.name = config.name || "New Transition";
     transition.model = this;
     return /** @type {Transition} */ (transition);
@@ -288,7 +289,7 @@ export class Model {
    *
    * @return {Link}
    */
-  Link(start, end, config={}) {
+  Link(start, end, config = {}) {
     let link = this._createConnector("link", start || config.start || null, end || config.end || null).primitive(this, excludeKeys(config, ["name", "start", "end"]));
     link.name = config.name || "Link";
     link.model = this;
@@ -300,7 +301,7 @@ export class Model {
    *
    * @return {Agent}
    */
-  Agent(config={}) {
+  Agent(config = {}) {
     let agentCell = this._createNode("folder");
     // must be set before primitive() is called
     agentCell.setAttribute("Type", "Agent");
@@ -315,7 +316,7 @@ export class Model {
    *
    * @return {Folder}
    */
-  Folder(config={}) {
+  Folder(config = {}) {
     let folder = this._createNode("folder").primitive(this, excludeKeys(config, ["name"]));
     folder.name = config.name || "New Folder";
     folder.model = this;
@@ -483,7 +484,7 @@ export class Model {
    *
    * @return {Primitive[]}
    */
-  find(selector=(()=>true)) {
+  find(selector = (() => true)) {
     let items = this.p(this._graph);
     return items.filter(x => x.primitive() && selector(x.primitive())).map(x => x.primitive());
   }
@@ -493,7 +494,7 @@ export class Model {
    *
    * @return {Link[]}
    */
-  findLinks(selector=(()=>true)) {
+  findLinks(selector = (() => true)) {
     let items = this.p(this._graph, "Link");
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -504,7 +505,7 @@ export class Model {
    *
    * @return {Flow[]}
    */
-  findFlows(selector=(()=>true)) {
+  findFlows(selector = (() => true)) {
     let items = this.p(this._graph, "Flow");
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -515,7 +516,7 @@ export class Model {
    *
    * @return {Transition[]}
    */
-  findTransitions(selector=(()=>true)) {
+  findTransitions(selector = (() => true)) {
     let items = this.p(this._graph, "Transition");
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -526,7 +527,7 @@ export class Model {
    *
    * @return {Stock[]}
    */
-  findStocks(selector=(()=>true)) {
+  findStocks(selector = (() => true)) {
     let items = this.p(this._graph, "Stock");
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -537,7 +538,7 @@ export class Model {
    *
    * @return {Variable[]}
    */
-  findVariables(selector=(()=>true)) {
+  findVariables(selector = (() => true)) {
     let items = this.p(this._graph, "Variable");
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -548,7 +549,7 @@ export class Model {
    *
    * @return {Converter[]}
    */
-  findConverters(selector=(()=>true)) {
+  findConverters(selector = (() => true)) {
     let items = this.p(this._graph, "Converter");
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -559,7 +560,7 @@ export class Model {
    *
    * @return {State[]}
    */
-  findStates(selector=(()=>true)) {
+  findStates(selector = (() => true)) {
     let items = this.p(this._graph, "State");
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -570,7 +571,7 @@ export class Model {
    *
    * @return {Action[]}
    */
-  findActions(selector=(()=>true)) {
+  findActions(selector = (() => true)) {
     let items = this.p(this._graph, "Action");
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -581,7 +582,7 @@ export class Model {
    *
    * @return {Population[]}
    */
-  findPopulations(selector=(()=>true)) {
+  findPopulations(selector = (() => true)) {
     let items = this.p(this._graph, "Agents");
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -592,7 +593,7 @@ export class Model {
    *
    * @return {Folder[]}
    */
-  findFolders(selector=(()=>true)) {
+  findFolders(selector = (() => true)) {
     let items = this.p(this._graph, "Folder");
 
     return items.filter(x => x.getAttribute("Type") !== "Agent").filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -603,7 +604,7 @@ export class Model {
    *
    * @return {Agent[]}
    */
-  findAgents(selector=(()=>true)) {
+  findAgents(selector = (() => true)) {
     let items = this.p(this._graph, "Folder");
 
     return items.filter(x => x.getAttribute("Type") === "Agent").filter(x => selector(x.primitive())).map(x => x.primitive());
@@ -744,7 +745,7 @@ export class Model {
    * @param {CustomUnitsType} value
    */
   set customUnits(value) {
-    this.settings.setAttribute("Units", value.map(unit =>  unit.name + "<>" + unit.scale + "<>" + unit.target).join("\n"));
+    this.settings.setAttribute("Units", value.map(unit => unit.name + "<>" + unit.scale + "<>" + unit.target).join("\n"));
   }
 }
 
@@ -754,7 +755,7 @@ export class Model {
  * @param {string[]} keys
  */
 function excludeKeys(obj, keys) {
-  let newObj= {};
+  let newObj = {};
   for (let key in obj) {
     if (!keys.includes(key)) {
       newObj[key] = obj[key];

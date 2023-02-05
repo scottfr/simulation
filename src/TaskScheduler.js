@@ -151,7 +151,7 @@ export class TaskQueue {
       this.setTime(this.cursor.key.time);
     } else {
       this.goNext();
-      this.setTime(mult(/** @type {Material} */ (this.tasks.max().time), new Material(10)));
+      this.setTime(mult(/** @type {Material} */(this.tasks.max().time), new Material(10)));
     }
   }
 

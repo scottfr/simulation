@@ -28,7 +28,7 @@ export class Results {
    */
   table(primitives) {
     if (primitives) {
-      let series = primitives.map(x => ({primitive: x, series: this.series(x)}));
+      let series = primitives.map(x => ({ primitive: x, series: this.series(x) }));
       let times = this.times();
 
       let res = [];
@@ -70,7 +70,7 @@ export class Results {
    * @param {import("./Blocks").Primitive} primitive
    * @param {number=} time - if omitted, the last available value
    */
-  value(primitive, time=null) {
+  value(primitive, time = null) {
     let series = this.series(primitive);
     if (time === null) {
       return series[series.length - 1];
