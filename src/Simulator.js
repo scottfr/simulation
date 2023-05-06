@@ -366,7 +366,6 @@ export class Simulator {
     };
 
     if (config) {
-      this.config = config;
 
       for (let solver in this.simulationModel.solvers) {
         this.createSolver(this.simulationModel.solvers[solver]);
@@ -398,7 +397,7 @@ export class Simulator {
             this.setStatus("PAUSED");
             this.shouldUpdateValues = false;
           }
-
+          
           if (this.config.onPause) {
             setTimeout(() => {
               let res = formatSimResults(this.results);

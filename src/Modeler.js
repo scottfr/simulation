@@ -140,6 +140,10 @@ export function checkErr(err, config, simulate) {
  * @returns
  */
 function innerRunSimulation(simulate, config) {
+  if (config) {
+    simulate.config = config;
+  }
+
   simulate.evaluatingLine = null;
 
   if (config.resultsWindow) {
@@ -151,6 +155,7 @@ function innerRunSimulation(simulate, config) {
     config.resultsWindow.windowContext.simulate = simulate;
     config.resultsWindow.data.simulation = simulate;
     config.resultsWindow.windowContext.componentRef.rerender();
+    config.resultsWindow.windowContext.notFirstRun = true;
   }
 
   bootCalc(simulate);
@@ -299,523 +304,550 @@ function innerRunSimulation(simulate, config) {
   }
 
 
-  // Initialize actual simulation
-  simulate.setup(model);
+  try {
+    // Initialize actual simulation
+    simulate.setup(model);
 
-  if (simulate.model.globals !== undefined) {
-    try {
-      evaluateGlobals(simulate.model.globals, simulate);
-    } catch (err) {
-      let annotations = [];
+    if (simulate.model.globals !== undefined) {
+      try {
+        evaluateGlobals(simulate.model.globals, simulate);
+      } catch (err) {
+        
+        if (err.simulationCommand === "STOP") {
+          // pass a STOP() error up
+          throw err;
+        }
 
-      let msg = "An error with the macros prevented the simulation from running.";
+        let annotations = [];
 
-      if (err instanceof ModelError) {
-        msg = msg + "<br/><br/>" + err.message;
-      } else {
-        if (err.toString) {
-          if (err.match && err.match(/line (\d+)/i)) {
-            let l = err.match(/line (\d+)/i)[1];
+        let msg = "An error with the macros prevented the simulation from running.";
 
-            annotations.push({
-              type: "error",
-              row: l !== undefined ? l - 1 : simulate.evaluatingLine - 1,
-              text: err
+        if (err instanceof ModelError) {
+          msg = msg + "<br/><br/>" + err.message;
+        } else {
+          if (err.toString) {
+            if (err.match && err.match(/line (\d+)/i)) {
+              let l = err.match(/line (\d+)/i)[1];
+
+              annotations.push({
+                type: "error",
+                row: l !== undefined ? l - 1 : simulate.evaluatingLine - 1,
+                text: err
+              });
+            }
+          }
+        
+          if (config.processError) {
+            config.processError(err);
+          }
+        }
+
+        if (config.showMacros) {
+          config.showMacros(annotations);
+        }
+
+        throw new ModelError(msg, {
+          code: 1000
+        });
+      }
+    }
+
+    let modelItems = simulate.model.find();
+
+    // generated topological sort of flows allowing
+    // us to evaluate them from "upstream" to "downstream"
+    // when dealing with non-negative stocks
+    simulate.clusters = makeClusters(simulate);
+
+    for (let item of modelItems) {
+      if (item instanceof Population) {
+        if (item.isInAgent()) {
+          throw new ModelError(`Cannot have the agent population <i>[${toHTML(item.name)}]</i> placed within an agent folder.`, {
+            primitive: item,
+            showEditor: false,
+            code: 1006
+          });
+        }
+
+        let agentBase = item.agentBase;
+        if (!agentBase || !(agentBase instanceof Agent)) {
+          throw new ModelError(`You must select a base agent for the primitive <i>[${toHTML(item.name)}]</i>. You can create agent definitions using Folder primitives.`, {
+            primitive: item,
+            showEditor: false,
+            code: 1007
+          });
+        }
+
+        let x = new SPopulation(simulate);
+
+        x.dna = new DNA(item, agentBase.id);
+        x.id = item.id;
+
+        x.agentId = agentBase.id;
+        x.createIds();
+
+        x.dna.solver = folderSolvers(item, solvers);
+        x.dna.solver.displayed.push(x);
+
+        x.geoDimUnits = item.geoUnits;
+        x.geoDimUnitsObject = createUnitStore(item.geoUnits, simulate, item);
+        try {
+          x.geoWidth = simpleUnitsTest(/** @type {Material} */(simpleEquation(item.geoWidth, simulate)), x.geoDimUnitsObject, simulate, item);
+        } catch (_err) {
+          throw new ModelError(`Invalid width for the agent population <i>[${toHTML(item.name)}]</i>.`, {
+            primitive: item,
+            showEditor: false,
+            code: 1008
+          });
+        }
+        try {
+          x.geoHeight = simpleUnitsTest(/** @type {Material} */(simpleEquation(item.geoHeight, simulate)), x.geoDimUnitsObject, simulate, item);
+        } catch (_err) {
+          throw new ModelError(`Invalid height for the agent population <i>[${toHTML(item.name)}]</i>.`, {
+            primitive: item,
+            showEditor: false,
+            code: 1009
+          });
+        }
+        x.halfWidth = div(x.geoWidth, new Material(2));
+        x.halfHeight = div(x.geoHeight, new Material(2));
+        x.geoWrap = item.geoWrapAround;
+        x.placement = item.geoPlacementType;
+        x.placementFunction = item.geoPlacementFunction;
+        x.network = item.networkType;
+        x.networkFunction = item.networkFunction;
+        x.agentBase = agentBase.agentParent;
+        if (x.agentBase && x.agentBase.trim()) {
+          try {
+            x.agentBase = simpleEquation(x.agentBase, simulate, simulate.varBank);
+          } catch (_err) {
+            throw new ModelError(`Invalid Agent Parent for the primitive <i>[${toHTML(agentBase.name)}]</i>.`, {
+              primitive: agentBase,
+              showEditor: false,
+              code: 1010
             });
           }
         }
-        
-        if (config.processError) {
-          config.processError(err);
+
+        let agentNodes = agentBase.children();
+
+        x.DNAs = [];
+        for (let agentNode of agentNodes) {
+          if (modelType(agentNode)) {
+            x.DNAs.push(getDNA(agentNode, x, solvers, simulate));
+          }
+          if (agentNode instanceof State) {
+            x.stateIds.add(agentNode.id);
+          }
+        }
+
+
+        x.size = item.populationSize;
+
+        x.agents = [];
+
+        x.dna.agents = x;
+
+        model.submodels[item.id] = x;
+        model.submodels.base.DNAs.push(x.dna);
+      } else if (!item.isInAgent()) {
+        if (modelType(item)) {
+          model.submodels.base.DNAs.push(getDNA(item, model.submodels.base, solvers, simulate));
         }
       }
-
-      if (config.showMacros) {
-        config.showMacros(annotations);
-      }
-
-      throw new ModelError(msg, {
-        code: 1000
-      });
     }
-  }
 
-  let modelItems = simulate.model.find();
 
-  // generated topological sort of flows allowing
-  // us to evaluate them from "upstream" to "downstream"
-  // when dealing with non-negative stocks
-  simulate.clusters = makeClusters(simulate);
 
-  for (let item of modelItems) {
-    if (item instanceof Population) {
-      if (item.isInAgent()) {
-        throw new ModelError(`Cannot have the agent population <i>[${toHTML(item.name)}]</i> placed within an agent folder.`, {
-          primitive: item,
-          showEditor: false,
-          code: 1006
-        });
+    for (let submodel of Object.values(model.submodels)) {
+      submodel.DNAs.sort((a, b) => {
+        if (a.neighborProxyDNA && !b.neighborProxyDNA) {
+          return 1;
+        }
+        if (b.neighborProxyDNA && !a.neighborProxyDNA) {
+          return -1;
+        }
+        return 0;
+      });
+
+      for (let j = 0; j < submodel.size; j++) {
+        let agent;
+        if (submodel.id === "base") {
+          agent = submodel.agents[0];
+        } else {
+          agent = new SAgent(simulate);
+          agent.container = submodel;
+          agent.index = j;
+          agent.children = [];
+          agent.childrenId = {};
+          agent.agentId = submodel.id;
+          agent.createIds();
+          if (submodel.agentBase) {
+            agent.vector.parent = submodel.agentBase;
+          }
+
+          submodel.agents.push(agent);
+        }
+        for (let dna of submodel.DNAs) {
+          decodeDNA(dna, agent, simulate);
+        }
       }
+    }
 
-      let agentBase = item.agentBase;
-      if (!agentBase || !(agentBase instanceof Agent)) {
-        throw new ModelError(`You must select a base agent for the primitive <i>[${toHTML(item.name)}]</i>. You can create agent definitions using Folder primitives.`, {
-          primitive: item,
-          showEditor: false,
-          code: 1007
-        });
+
+    for (let submodelId in model.submodels) {
+      let submodel = model.submodels[submodelId];
+      for (let j = 0; j < submodel.size; j++) {
+        for (let i = 0; i < submodel.DNAs.length; i++) {
+          linkPrimitive(submodel.agents[j].children[i], submodel.DNAs[i], simulate);
+        }
       }
+    }
 
-      let x = new SPopulation(simulate);
-
-      x.dna = new DNA(item, agentBase.id);
-      x.id = item.id;
-
-      x.agentId = agentBase.id;
-      x.createIds();
-
-      x.dna.solver = folderSolvers(item, solvers);
-      x.dna.solver.displayed.push(x);
-
-      x.geoDimUnits = item.geoUnits;
-      x.geoDimUnitsObject = createUnitStore(item.geoUnits, simulate, item);
-      try {
-        x.geoWidth = simpleUnitsTest(/** @type {Material} */(simpleEquation(item.geoWidth, simulate)), x.geoDimUnitsObject, simulate, item);
-      } catch (_err) {
-        throw new ModelError(`Invalid width for the agent population <i>[${toHTML(item.name)}]</i>.`, {
-          primitive: item,
-          showEditor: false,
-          code: 1008
-        });
+    for (let submodelId in model.submodels) {
+      let submodel = model.submodels[submodelId];
+      for (let j = 0; j < submodel.size; j++) {
+        setAgentInitialValues(submodel.agents[j]);
       }
-      try {
-        x.geoHeight = simpleUnitsTest(/** @type {Material} */(simpleEquation(item.geoHeight, simulate)), x.geoDimUnitsObject, simulate, item);
-      } catch (_err) {
-        throw new ModelError(`Invalid height for the agent population <i>[${toHTML(item.name)}]</i>.`, {
-          primitive: item,
-          showEditor: false,
-          code: 1009
-        });
-      }
-      x.halfWidth = div(x.geoWidth, new Material(2));
-      x.halfHeight = div(x.geoHeight, new Material(2));
-      x.geoWrap = item.geoWrapAround;
-      x.placement = item.geoPlacementType;
-      x.placementFunction = item.geoPlacementFunction;
-      x.network = item.networkType;
-      x.networkFunction = item.networkFunction;
-      x.agentBase = agentBase.agentParent;
-      if (x.agentBase && x.agentBase.trim()) {
+    }
+
+    for (let submodel in model.submodels) {
+      if (submodel !== "base") {
         try {
-          x.agentBase = simpleEquation(x.agentBase, simulate, simulate.varBank);
-        } catch (_err) {
-          throw new ModelError(`Invalid Agent Parent for the primitive <i>[${toHTML(agentBase.name)}]</i>.`, {
-            primitive: agentBase,
+          buildNetwork(model.submodels[submodel], simulate);
+        } catch (err) {
+          let msg = "An error with the custom network function prevented the simulation from running.";
+          if (err instanceof ModelError) {
+            msg = msg + "<br/><br/>" + err.message;
+          }
+
+          throw new ModelError(msg, {
+            primitive: model.submodels[submodel].node,
             showEditor: false,
-            code: 1010
+            code: 1011
           });
         }
-      }
-
-      let agentNodes = agentBase.children();
-
-      x.DNAs = [];
-      for (let agentNode of agentNodes) {
-        if (modelType(agentNode)) {
-          x.DNAs.push(getDNA(agentNode, x, solvers, simulate));
-        }
-        if (agentNode instanceof State) {
-          x.stateIds.add(agentNode.id);
-        }
-      }
 
 
-      x.size = item.populationSize;
-
-      x.agents = [];
-
-      x.dna.agents = x;
-
-      model.submodels[item.id] = x;
-      model.submodels.base.DNAs.push(x.dna);
-    } else if (!item.isInAgent()) {
-      if (modelType(item)) {
-        model.submodels.base.DNAs.push(getDNA(item, model.submodels.base, solvers, simulate));
-      }
-    }
-  }
-
-
-
-  for (let submodel of Object.values(model.submodels)) {
-    submodel.DNAs.sort((a, b) => {
-      if (a.neighborProxyDNA && !b.neighborProxyDNA) {
-        return 1;
-      }
-      if (b.neighborProxyDNA && !a.neighborProxyDNA) {
-        return -1;
-      }
-      return 0;
-    });
-
-    for (let j = 0; j < submodel.size; j++) {
-      let agent;
-      if (submodel.id === "base") {
-        agent = submodel.agents[0];
-      } else {
-        agent = new SAgent(simulate);
-        agent.container = submodel;
-        agent.index = j;
-        agent.children = [];
-        agent.childrenId = {};
-        agent.agentId = submodel.id;
-        agent.createIds();
-        if (submodel.agentBase) {
-          agent.vector.parent = submodel.agentBase;
-        }
-
-        submodel.agents.push(agent);
-      }
-      for (let dna of submodel.DNAs) {
-        decodeDNA(dna, agent, simulate);
-      }
-    }
-  }
-
-
-  for (let submodelId in model.submodels) {
-    let submodel = model.submodels[submodelId];
-    for (let j = 0; j < submodel.size; j++) {
-      for (let i = 0; i < submodel.DNAs.length; i++) {
-        linkPrimitive(submodel.agents[j].children[i], submodel.DNAs[i], simulate);
-      }
-    }
-  }
-
-  for (let submodelId in model.submodels) {
-    let submodel = model.submodels[submodelId];
-    for (let j = 0; j < submodel.size; j++) {
-      setAgentInitialValues(submodel.agents[j]);
-    }
-  }
-
-  for (let submodel in model.submodels) {
-    if (submodel !== "base") {
-      try {
-        buildNetwork(model.submodels[submodel], simulate);
-      } catch (err) {
-        let msg = "An error with the custom network function prevented the simulation from running.";
-        if (err instanceof ModelError) {
-          msg = msg + "<br/><br/>" + err.message;
-        }
-
-        throw new ModelError(msg, {
-          primitive: model.submodels[submodel].node,
-          showEditor: false,
-          code: 1011
-        });
-      }
-
-
-      try {
-        buildPlacements(model.submodels[submodel], simulate);
-      } catch (err) {
-        let msg = "An error with the agent placement function prevented the simulation from running.";
-        if (err instanceof ModelError) {
-          msg = msg + "<br/><br/>" + err.message;
-        }
-
-        throw new ModelError(msg, {
-          primitive: model.submodels[submodel].node,
-          showEditor: false,
-          code: 1012
-        });
-      }
-
-    }
-  }
-
-
-  simulate.results = {
-    times: [],
-    data: [],
-    timeUnits: simulate.timeUnitsString
-  };
-  simulate.displayInformation = {
-    populated: false,
-    ids: [],
-    times: [],
-    objects: [],
-    maps: [],
-    histograms: []
-  };
-
-  model.submodels["base"].agents[0].children.forEach((x) => {
-    if (!(x instanceof SAction || x instanceof STransition)) {
-
-      if (!x.dna.noOutput) {
-        simulate.displayInformation.objects.push(x);
-        simulate.displayInformation.ids.push(x.id);
-      }
-      let data = {};
-      if (x instanceof SPopulation) {
-        data.width = x.geoWidth;
-        data.height = x.geoHeight;
-        data.units = x.geoDimUnitsObject;
-        data.states = x.states();
-      } else {
-        if (!x.dna.noOutput) {
-          x.dna.solver.displayed.push(x);
-        }
-      }
-      if (!simulate.results.children) {
-        simulate.results.children = {};
-      }
-      simulate.results.children[x.id] = {
-        data: data,
-        results: [],
-        dataMode: "float"
-      };
-    }
-  });
-
-
-  let hasCompletedFirstPass = false;
-  function completedFirstPass() {
-    if (hasCompletedFirstPass) {
-      return;
-    }
-    hasCompletedFirstPass = true;
-    if (simulate.displayInformation.populated) {
-
-      for (let i = 0; i < simulate.displayInformation.origIds.length; i++) {
-
-        let id = simulate.displayInformation.origIds[i];
-        let object = simulate.displayInformation.objects[i];
-
-        if (object instanceof SPopulation) {
-          simulate.results.children[id].states = object.stateIds;
-
-          simulate.displayInformation.agents[id.toString()].data = simulate.results.children[id].data;
-          simulate.displayInformation.agents[id.toString()].results = simulate.results.children[id].results;
-
-
-        } else if (simulate.results.data[0][id] instanceof Vector && simulate.results.data[0][id].names) {
-
-          let names = simulate.results.data[0][id].fullNames();
-
-          simulate.results.children[id].indexedFullNames = names.slice();
-          for (let j = 0; j < names.length; j++) {
-            names[j] = names[j].join(", ");
+        try {
+          buildPlacements(model.submodels[submodel], simulate);
+        } catch (err) {
+          let msg = "An error with the agent placement function prevented the simulation from running.";
+          if (err instanceof ModelError) {
+            msg = msg + "<br/><br/>" + err.message;
           }
-          simulate.results.children[id].indexedNames = names;
 
+          throw new ModelError(msg, {
+            primitive: model.submodels[submodel].node,
+            showEditor: false,
+            code: 1012
+          });
         }
+
       }
-
-    } else {
-      simulate.displayInformation.populated = true;
-      simulate.displayInformation.colors = [];
-      simulate.displayInformation.headers = [];
-      simulate.displayInformation.agents = [];
-      simulate.displayInformation.displayedItems = [];
-      simulate.displayInformation.renderers = [];
-      simulate.displayInformation.elementIds = [];
-      simulate.displayInformation.res = simulate.results;
-
-      let ids = [];
-
-      simulate.displayInformation.origIds = simulate.displayInformation.ids.slice();
-      for (let i = 0; i < simulate.displayInformation.origIds.length; i++) {
-        let id = simulate.displayInformation.origIds[i];
-        let object = simulate.displayInformation.objects[i];
-        let dna = object.dna;
-
-        simulate.displayInformation.displayedItems.push({
-          id,
-          header: dna.name,
-          type: dna.primitive._node.value.nodeName
-        });
+    }
+  
 
 
-        if (object instanceof SPopulation) {
-          let states = object.stateIds;
+    simulate.results = {
+      times: [],
+      data: [],
+      timeUnits: simulate.timeUnitsString
+    };
+    simulate.displayInformation = {
+      populated: false,
+      ids: [],
+      times: [],
+      objects: [],
+      maps: [],
+      histograms: []
+    };
 
-          simulate.results.children[id].states = states;
+    model.submodels["base"].agents[0].children.forEach((x) => {
+      if (!(x instanceof SAction || x instanceof STransition)) {
 
-          states.forEach(state => {
-            let innerItem = simulate.model.getId(state);
+        if (!x.dna.noOutput) {
+          simulate.displayInformation.objects.push(x);
+          simulate.displayInformation.ids.push(x.id);
+        }
+        let data = {};
+        if (x instanceof SPopulation) {
+          data.width = x.geoWidth;
+          data.height = x.geoHeight;
+          data.units = x.geoDimUnitsObject;
+          data.states = x.states();
+        } else {
+          if (!x.dna.noOutput) {
+            x.dna.solver.displayed.push(x);
+          }
+        }
+        if (!simulate.results.children) {
+          simulate.results.children = {};
+        }
+        simulate.results.children[x.id] = {
+          data: data,
+          results: [],
+          dataMode: "float"
+        };
+      }
+    });
+  
+
+
+    let hasCompletedFirstPass = false;
+    function completedFirstPass() {
+      if (hasCompletedFirstPass) {
+        return;
+      }
+      hasCompletedFirstPass = true;
+      if (simulate.displayInformation.populated) {
+
+        for (let i = 0; i < simulate.displayInformation.origIds.length; i++) {
+
+          let id = simulate.displayInformation.origIds[i];
+          let object = simulate.displayInformation.objects[i];
+
+          if (object instanceof SPopulation) {
+            simulate.results.children[id].states = object.stateIds;
+
+            simulate.displayInformation.agents[id.toString()].data = simulate.results.children[id].data;
+            simulate.displayInformation.agents[id.toString()].results = simulate.results.children[id].results;
+
+
+          } else if (simulate.results.data[0][id] instanceof Vector && simulate.results.data[0][id].names) {
+
+            let names = simulate.results.data[0][id].fullNames();
+
+            simulate.results.children[id].indexedFullNames = names.slice();
+            for (let j = 0; j < names.length; j++) {
+              names[j] = names[j].join(", ");
+            }
+            simulate.results.children[id].indexedNames = names;
+
+          }
+        }
+
+      } else {
+        simulate.displayInformation.populated = true;
+        simulate.displayInformation.colors = [];
+        simulate.displayInformation.headers = [];
+        simulate.displayInformation.agents = [];
+        simulate.displayInformation.displayedItems = [];
+        simulate.displayInformation.renderers = [];
+        simulate.displayInformation.elementIds = [];
+        simulate.displayInformation.res = simulate.results;
+
+        let ids = [];
+
+        simulate.displayInformation.origIds = simulate.displayInformation.ids.slice();
+        for (let i = 0; i < simulate.displayInformation.origIds.length; i++) {
+          let id = simulate.displayInformation.origIds[i];
+          let object = simulate.displayInformation.objects[i];
+          let dna = object.dna;
+
+          simulate.displayInformation.displayedItems.push({
+            id,
+            header: dna.name,
+            type: dna.primitive._node.value.nodeName
+          });
+
+
+          if (object instanceof SPopulation) {
+            let states = object.stateIds;
+
+            simulate.results.children[id].states = states;
+
+            states.forEach(state => {
+              let innerItem = simulate.model.getId(state);
+              ids.push(id);
+              simulate.displayInformation.elementIds.push("e" + id + "-" + state);
+              simulate.displayInformation.headers.push(innerItem.name);
+              simulate.displayInformation.colors.push(config.getColor ? config.getColor(innerItem) : "#000000");
+              if (simulate.results.children[id].dataMode === "float") {
+                simulate.displayInformation.renderers.push(commaStr);
+              } else if (simulate.results.children[id].dataMode === "agents") {
+                simulate.displayInformation.renderers.push((x) => {
+                  return x;
+                });
+              } else {
+                simulate.displayInformation.renderers.push(undefined);
+              }
+            });
+
+            simulate.displayInformation.agents[id.toString()] = {
+              id: id,
+              item: dna.primitive,
+              data: simulate.results.children[id].data,
+              results: simulate.results.children[id].results
+            };
+
+
+          } else if (simulate.results.data.length && simulate.results.data[0][id] instanceof Vector && simulate.results.data[0][id].names) {
+
+            let col = config.getColor ? config.getColor(dna.primitive) : "#000000";
+
+            let names = simulate.results.data[0][id].fullNames();
+
+            simulate.results.children[id].indexedFullNames = names.slice();
+            for (let j = 0; j < names.length; j++) {
+              names[j] = names[j].join(", ");
+            }
+            simulate.results.children[id].indexedNames = names;
+
+            for (let j = 0; j < names.length; j++) {
+              ids.push(id);
+              simulate.displayInformation.elementIds.push("e" + id + "-" + j);
+              simulate.displayInformation.headers.push(dna.name + " (" + names[j] + ")");
+              simulate.displayInformation.colors.push(col);
+              simulate.displayInformation.renderers.push(commaStr);
+            }
+
+          } else {
             ids.push(id);
-            simulate.displayInformation.elementIds.push("e" + id + "-" + state);
-            simulate.displayInformation.headers.push(innerItem.name);
-            simulate.displayInformation.colors.push(config.getColor ? config.getColor(innerItem) : "#000000");
+            simulate.displayInformation.elementIds.push("e" + id);
+            simulate.displayInformation.headers.push(dna.name);
+            simulate.displayInformation.colors.push(config.getColor ? config.getColor(dna.primitive) : "#000000");
             if (simulate.results.children[id].dataMode === "float") {
               simulate.displayInformation.renderers.push(commaStr);
-            } else if (simulate.results.children[id].dataMode === "agents") {
-              simulate.displayInformation.renderers.push((x) => {
-                return x;
-              });
             } else {
               simulate.displayInformation.renderers.push(undefined);
             }
-          });
-
-          simulate.displayInformation.agents[id.toString()] = {
-            id: id,
-            item: dna.primitive,
-            data: simulate.results.children[id].data,
-            results: simulate.results.children[id].results
-          };
-
-
-        } else if (simulate.results.data.length && simulate.results.data[0][id] instanceof Vector && simulate.results.data[0][id].names) {
-
-          let col = config.getColor ? config.getColor(dna.primitive) : "#000000";
-
-          let names = simulate.results.data[0][id].fullNames();
-
-          simulate.results.children[id].indexedFullNames = names.slice();
-          for (let j = 0; j < names.length; j++) {
-            names[j] = names[j].join(", ");
-          }
-          simulate.results.children[id].indexedNames = names;
-
-          for (let j = 0; j < names.length; j++) {
-            ids.push(id);
-            simulate.displayInformation.elementIds.push("e" + id + "-" + j);
-            simulate.displayInformation.headers.push(dna.name + " (" + names[j] + ")");
-            simulate.displayInformation.colors.push(col);
-            simulate.displayInformation.renderers.push(commaStr);
           }
 
-        } else {
-          ids.push(id);
-          simulate.displayInformation.elementIds.push("e" + id);
-          simulate.displayInformation.headers.push(dna.name);
-          simulate.displayInformation.colors.push(config.getColor ? config.getColor(dna.primitive) : "#000000");
-          if (simulate.results.children[id].dataMode === "float") {
-            simulate.displayInformation.renderers.push(commaStr);
-          } else {
-            simulate.displayInformation.renderers.push(undefined);
-          }
         }
-
-      }
 
       
 
 
-      simulate.displayInformation.store = {
-        data: []
-      };
-      simulate.displayInformation.ids = ids;
+        simulate.displayInformation.store = {
+          data: []
+        };
+        simulate.displayInformation.ids = ids;
+      }
     }
-  }
 
 
-  if (config.silent) {
-    if (config.onPause) {
-      simulate.run(config);
+    if (config.silent) {
+      if (config.onPause) {
+        simulate.run(config);
+      } else {
+        return formatSimResults(simulate.run(config));
+      }
     } else {
-      return formatSimResults(simulate.run(config));
-    }
-  } else {
 
-    let count = div(model.timeLength, model.timeStep);
-    for (let i = 0; i <= count.value; i++) {
-      simulate.displayInformation.times.push(plus(model.timeStart, mult(model.timeStep, new Material(i))).value);
-    }
-
-
-    let oldSuccess = config.onSuccess;
-    config.onSuccess = function (res) {
-      completedFirstPass(); // simulation may have terminated via stop() before first pass
-
-      for (let solver in simulate.simulationModel.solvers) {
-        updateDisplayed(simulate.simulationModel.solvers[solver], simulate);
+      let count = div(model.timeLength, model.timeStep);
+      for (let i = 0; i <= count.value; i++) {
+        simulate.displayInformation.times.push(plus(model.timeStart, mult(model.timeStep, new Material(i))).value);
       }
 
-      if (simulate.setResultsCallback) {
-        simulate.setResultsCallback(formatSimResults(simulate.results));
-      }
 
-      if (oldSuccess) {
-        oldSuccess(res);
-      }
-    };
+      let oldSuccess = config.onSuccess;
+      config.onSuccess = function (res) {
+        completedFirstPass(); // simulation may have terminated via stop() before first pass
 
-    config.onCompletedFirstPass = function () {
-      completedFirstPass();
-    };
-
-
-
-    let oldStep = config.onStep;
-    config.onStep = function (solver) {
-
-      // See if we should sleep to let the main UI update
-
-      let updated = false;
-      let progress = simulate.progress();
-
-
-      if (!simulate.shouldSleep) {
-        let timeTaken = Date.now() - simulate.wakeUpTime;
-        
-        let complexityMultiplier = 1;
-        if (simulate.results.times.length > 20000) {
-          complexityMultiplier = 4;
-        } else if (simulate.results.times.length > 5000) {
-          complexityMultiplier = 2;
-        } else if (simulate.results.times.length > 1000) {
-          complexityMultiplier = 1.3;
-        }
-
-        if ((!simulate.resultsWindow && timeTaken > 100 * complexityMultiplier) || timeTaken > 600 * complexityMultiplier) {
-          updateDisplayed(solver, simulate);
-          updated = true;
-
-          // @ts-ignore
-          simulate.timer = setTimeout(() => {
-            simulate.resume();
-          }, 20 * Math.pow(complexityMultiplier, 1.5));
-
-          simulate.sleep();
-        }
-      }
-
-      if (progress === 1 && !updated) {
-        updateDisplayed(solver, simulate);
-      }
-
-      // Call any user defined step function
-
-      if (oldStep) {
-        oldStep(solver);
-      }
-    };
-
-    let oldError = config.onError;
-    config.onError = function (res) {
-
-      try {
         for (let solver in simulate.simulationModel.solvers) {
           updateDisplayed(simulate.simulationModel.solvers[solver], simulate);
         }
-      } catch (err) {
+
+        if (simulate.setResultsCallback) {
+          simulate.setResultsCallback(formatSimResults(simulate.results));
+        }
+
+        if (oldSuccess) {
+          oldSuccess(res);
+        }
+      };
+
+      config.onCompletedFirstPass = function () {
+        completedFirstPass();
+      };
+
+
+
+      let oldStep = config.onStep;
+      config.onStep = function (solver) {
+
+        // See if we should sleep to let the main UI update
+
+        let updated = false;
+        let progress = simulate.progress();
+
+
+        if (!simulate.shouldSleep) {
+          let timeTaken = Date.now() - simulate.wakeUpTime;
+        
+          let complexityMultiplier = 1;
+          if (simulate.results.times.length > 20000) {
+            complexityMultiplier = 4;
+          } else if (simulate.results.times.length > 5000) {
+            complexityMultiplier = 2;
+          } else if (simulate.results.times.length > 1000) {
+            complexityMultiplier = 1.3;
+          }
+
+          if ((!simulate.resultsWindow && timeTaken > 100 * complexityMultiplier) || timeTaken > 600 * complexityMultiplier) {
+            updateDisplayed(solver, simulate);
+            updated = true;
+
+            // @ts-ignore
+            simulate.timer = setTimeout(() => {
+              simulate.resume();
+            }, 20 * Math.pow(complexityMultiplier, 1.5));
+
+            simulate.sleep();
+          }
+        }
+
+        if (progress === 1 && !updated) {
+          updateDisplayed(solver, simulate);
+        }
+
+        // Call any user defined step function
+
+        if (oldStep) {
+          oldStep(solver);
+        }
+      };
+
+      let oldError = config.onError;
+      config.onError = function (res) {
+
+        try {
+          for (let solver in simulate.simulationModel.solvers) {
+            updateDisplayed(simulate.simulationModel.solvers[solver], simulate);
+          }
+        } catch (err) {
         // pass
-      }
+        }
 
-      if (simulate.finished) {
-        simulate.finished();
-      }
+        if (simulate.finished) {
+          simulate.finished();
+        }
 
-      if (oldError) {
-        oldError(res);
-      }
-    };
+        if (oldError) {
+          oldError(res);
+        }
+      };
 
-    simulate.run(config);
+      simulate.run(config);
+    }
+  } catch (err) {
+    // we need to catch STOP() calls during initialization (e.g. stock initial values)
+    if (err.simulationCommand !== "STOP") {
+      throw err;
+    } else {
+      if (config.silent) {
+        return {
+          times: [],
+          value: () => {
+            return [];
+          },
+          lastValue: () => {
+          },
+          error: "stop() called during initialization",
+        };
+      }
+    }
   }
 }
 
@@ -1179,6 +1211,20 @@ function getDNA(node, submodel, solvers, simulate) {
           showEditor: false,
           code: 1017
         });
+      }
+      if (!(dna.delay instanceof Material)) {
+        throw new ModelError("Stock delay must be a number.", {
+          primitive: node,
+          showEditor: false,
+          code: 1073
+        }); 
+      }
+      if (dna.delay.value < 0) {
+        throw new ModelError("Stock delay cannot be less than 0.", {
+          primitive: node,
+          showEditor: false,
+          code: 1074
+        }); 
       }
     }
   } else if (node instanceof Flow) {

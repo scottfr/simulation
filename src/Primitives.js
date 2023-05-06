@@ -1,6 +1,6 @@
 import { DataBank } from "./PrimitivePastValues.js";
 import { simpleNum, simpleEquation, decodeDNA, linkPrimitive, simpleUnitsTest, setAgentInitialValues, getPrimitiveNeighborhood, validateAgentLocation } from "./Modeler.js";
-import { div, plus, mult, evaluateTree, trimTree, trueValue, lessThanEq, greaterThan, minus, eq, createTree, negate, toNum } from "./formula/Formula.js";
+import { div, plus, mult, evaluateTree, trimTree, trueValue, lessThanEq, greaterThan, minus, eq, createTree, negate, toNum, lessThan } from "./formula/Formula.js";
 import { Material } from "./formula/Material.js";
 import { convertUnits } from "./formula/Units.js";
 import { Task } from "./TaskScheduler.js";
@@ -8,6 +8,8 @@ import { Rand, RandExp } from "./formula/Rand.js";
 import { Vector } from "./formula/Vector.js";
 import { ModelError } from "./formula/ModelError.js";
 import { toHTML } from "./Utilities.js";
+import { stringify } from "./formula/Utilities.js";
+import Big from "../vendor/bigjs/big.js";
 
 
 export class SPrimitive {
@@ -111,7 +113,12 @@ export class SPrimitive {
   }
 
   toNum() {
-    return this.value();
+    let val = this.value();
+    if (typeof val === "string") {
+      // if it is a string, properly stringify it
+      return stringify(val, this.simulate);
+    }
+    return val;
   }
 
   /**
@@ -1428,6 +1435,10 @@ export class SStock extends SPrimitive {
   setDelay(delay) {
     delay = delay || this.dna.delay;
     this.delay = delay;
+    if (this.delay?.value === 0) {
+      // if the delay is 0, treat it as if there was no delay
+      this.delay = undefined;
+    }
   }
 
   setInitialValue() {
@@ -1484,22 +1495,32 @@ export class SStock extends SPrimitive {
     }
 
 
-    if (this.delay === undefined) {
+    if (
+      this.delay === undefined
+      || lessThanEq(this.delay, this.simulate.timeStep.fullClone())
+    ) {
       // it's a non-serialized stock;
       this.level = init;
     } else {
       // it's serialized
-      let startVal = mult(init, div(this.simulate.userTimeStep, this.delay));
       this.initRate = div(init, this.delay.forceUnits(this.simulate.timeUnits));
+      let startValue = mult(this.initRate, this.simulate.userTimeStep.fullClone());
 
-      this.level = startVal;
+      this.level = startValue;
+
 
       this.simulate.tasks.addEvent((timeChange, oldTime, newTime) => {
         if (timeChange.value > 0) {
-          if (lessThanEq(minus(newTime, this.simulate.timeStart), minus(this.delay, this.simulate.userTimeStep))) {
-            timeChange = this.simulate.varBank["min"]([timeChange, minus(this.delay, minus(oldTime, this.simulate.timeStart))]);
-            this.level = plus(this.level, mult(timeChange, this.initRate));
+          let delaySpanEnd = minus(this.delay, this.simulate.userTimeStep);
+          let eventSpan = [minus(oldTime, this.simulate.timeStart), minus(newTime, this.simulate.timeStart)];
+          // No overlaps between the two spans
+          if (lessThan(delaySpanEnd, eventSpan[0])) {
+            return;
           }
+
+          let overlap = minus(this.simulate.varBank["min"]([delaySpanEnd, eventSpan[1]]), eventSpan[0]);
+          
+          this.level = plus(this.level, mult(overlap, this.initRate));
         }
       });
     }
@@ -1528,10 +1549,18 @@ export class SStock extends SPrimitive {
 
   /**
    * @param {ValueType} amnt
-   * @param {Material} time
+   * @param {Material} oldTime
    */
-  add(amnt, time) {
-    if (this.delay === undefined) {
+  add(amnt, oldTime) {
+
+    let targetTime;
+    
+    if (this.delay !== undefined) {
+      // @ts-ignore bigjs is misstyped
+      targetTime = new Material(Big(oldTime.value).plus(this.delay.forceUnits(oldTime.units).value).toNumber(), oldTime.units);
+    }
+
+    if (this.delay === undefined || lessThanEq(targetTime, this.simulate.time())) {
       this.level = plus(this.level, amnt);
       if (this.dna.nonNegative) {
         if (this.level instanceof Vector) {
@@ -1548,22 +1577,19 @@ export class SStock extends SPrimitive {
         }
       }
     } else {
-      this.scheduleAdd(amnt, time);
+      this.scheduleAdd(amnt, targetTime);
     }
   }
 
   /**
    * @param {ValueType} amnt
-   * @param {Material} time
-   * @param {Material=} delay
+   * @param {Material} targetTime
    */
-  scheduleAdd(amnt, time, delay) {
-    delay = delay || this.delay;
-
+  scheduleAdd(amnt, targetTime) {
     let oldLevel;
 
     let t = new Task({
-      time: plus(time, delay),
+      time: targetTime,
       data: {
         amnt: amnt,
         tentative: true
@@ -1607,15 +1633,19 @@ export class SStock extends SPrimitive {
 
     if (this.delay !== undefined) {
       let res = this.level;
-      for (let i = 0; i < this.tasks.length; i++) {
-        if (greaterThan(this.tasks[i].time, this.simulate.time()) && lessThanEq(this.tasks[i].time, plus(this.simulate.time(), this.delay))) {
-          res = plus(res, /** @type {ValueType} */(this.tasks[i].data.amnt));
+      let t = this.simulate.time();
+      for (let i = this.tasks.length - 1; i >= 0; i--) {
+        if (greaterThan(this.tasks[i].time, t)) {
+          res = plus(res, /** @type {ValueType} */ (this.tasks[i].data.amnt));
+        } else {
+          break;
         }
       }
 
-      let x = minus(this.delay, this.simulate.userTimeStep);
-      if (greaterThan(x, this.simulate.timeProgressed())) {
-        let timeLeft = minus(x, this.simulate.timeProgressed());
+      // add in any pending `addEvent` mass from initialization
+      let progressed = plus(this.simulate.timeProgressed(), this.simulate.userTimeStep);
+      if (greaterThan(this.delay, progressed)) {
+        let timeLeft = minus(this.delay, progressed);
         res = plus(res, mult(this.initRate, timeLeft));
       }
 

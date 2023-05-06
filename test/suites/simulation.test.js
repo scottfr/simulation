@@ -245,7 +245,6 @@ describe.each([
       p.value = "[My Flow]";
       let res = m.simulate();
       expect(res.series(p)[20]).toBe(0);
-
     });
 
 
@@ -401,6 +400,50 @@ describe.each([
     });
 
 
+    test("Simple conveyor stock", () => {
+      let m = new Model({ algorithm });
+
+
+      let s = m.Stock({
+        name: "My Stock",
+        type: "Conveyor",
+        delay: 0,
+        initial: 0
+      });
+      m.Flow(null, s, {
+        name: "My Flow",
+        rate: 1
+      });
+
+      let res = m.simulate();
+      // no delay
+      expect(res.series(s)[0]).toBe(0);
+      expect(res.series(s)[1]).toBe(1);
+      expect(res.series(s)[2]).toBe(2);
+      expect(res.series(s)[3]).toBe(3);
+      expect(res.series(s)[4]).toBe(4);
+
+
+      s.delay = 1;
+      res = m.simulate();
+      expect(res.series(s)[0]).toBe(0);
+      expect(res.series(s)[1]).toBe(1);
+      expect(res.series(s)[2]).toBe(2);
+      expect(res.series(s)[3]).toBe(3);
+      expect(res.series(s)[4]).toBe(4);
+
+        
+      s.delay = 2;
+      res = m.simulate();
+      expect(res.series(s)[0]).toBe(0);
+      expect(res.series(s)[1]).toBe(0);
+      expect(res.series(s)[2]).toBe(1);
+      expect(res.series(s)[3]).toBe(2);
+      expect(res.series(s)[4]).toBe(3);
+
+    });
+
+
     test("Two conveyor stocks", () => {
       let m = new Model({ algorithm });
 
@@ -514,6 +557,238 @@ describe.each([
       expect(Math.round(res.value(outF) * 1000)).toBe(2 * 1000);
       expect(res.series(outF)[3]).toBe(0);
       expect(res.value(f)).toBe(2);
+    });
+
+
+    test("Conveyor with short delay", () => {
+      let m = new Model({ algorithm });
+
+
+      let s = m.Stock({
+        name: "My Stock"
+      });
+      let f = m.Flow(null, s, {
+        name: "My Flow"
+      });
+      let s2 = m.Stock({
+        name: "My Stock 2"
+      });
+      let f2 = m.Flow(s, s2, {
+        name: "My Flow 2"
+      });
+
+      f.rate = 1;
+      f2.rate = "[My Stock]";
+
+
+      s.initial = 0;
+      s.type = "Conveyor";
+      // delay = time step
+      s.delay = 1;
+
+      s2.initial = 0;
+
+
+      let res = m.simulate();
+
+      if (algorithm === "Euler") {
+        expect(res.series(s)[0]).toBe(0);
+        expect(res.series(s)[1]).toBe(1);
+        expect(res.series(s)[2]).toBe(1);
+        expect(res.series(s)[5]).toBe(1);
+
+        expect(res.series(s2)[0]).toBe(0);
+        expect(res.series(s2)[1]).toBe(0);
+        expect(res.series(s2)[2]).toBe(1);
+        expect(res.series(s2)[3]).toBe(2);
+        expect(res.series(s2)[4]).toBe(3);
+        expect(res.series(s2)[5]).toBe(4);
+      } else {
+        expect(res.series(s)[0]).toBe(0);
+        expect(Math.round(res.series(s)[20] * 1000)).toBe(1 * 1000);
+
+        expect(res.series(s2)[0]).toBe(0);
+        expect(Math.round(res.series(s2)[20] * 1000)).toBe(19 * 1000);
+      }
+
+
+      // delay < time step
+      s.delay = 0.2;
+
+      res = m.simulate();
+
+      if (algorithm === "Euler") {
+        expect(res.series(s)[0]).toBe(0);
+        expect(res.series(s)[1]).toBe(1);
+        expect(res.series(s)[2]).toBe(1);
+        expect(res.series(s)[5]).toBe(1);
+  
+        expect(res.series(s2)[0]).toBe(0);
+        expect(res.series(s2)[1]).toBe(0);
+        expect(res.series(s2)[2]).toBe(1);
+        expect(res.series(s2)[3]).toBe(2);
+        expect(res.series(s2)[4]).toBe(3);
+        expect(res.series(s2)[5]).toBe(4);
+      } else {
+        expect(res.series(s)[0]).toBe(0);
+        expect(Math.round(res.series(s)[20] * 1000)).toBe(1 * 1000);
+  
+        expect(res.series(s2)[0]).toBe(0);
+        expect(Math.round(res.series(s2)[20] * 1000)).toBe(19 * 1000);
+      }
+
+      // delay = 0
+      s.delay = 0;
+
+      res = m.simulate();
+ 
+      if (algorithm === "Euler") {
+        expect(res.series(s)[0]).toBe(0);
+        expect(res.series(s)[1]).toBe(1);
+        expect(res.series(s)[2]).toBe(1);
+        expect(res.series(s)[5]).toBe(1);
+   
+        expect(res.series(s2)[0]).toBe(0);
+        expect(res.series(s2)[1]).toBe(0);
+        expect(res.series(s2)[2]).toBe(1);
+        expect(res.series(s2)[3]).toBe(2);
+        expect(res.series(s2)[4]).toBe(3);
+        expect(res.series(s2)[5]).toBe(4);
+      } else {
+        expect(res.series(s)[0]).toBe(0);
+        expect(Math.round(res.series(s)[20] * 1000)).toBe(1 * 1000);
+   
+        expect(res.series(s2)[0]).toBe(0);
+        expect(Math.round(res.series(s2)[20] * 1000)).toBe(19 * 1000);
+      }
+
+      // negative delay, should fail
+      s.delay = -1;
+      expect(() => m.simulate()).toThrow(/cannot be less than 0/);
+    });
+
+
+    test("Conveyor material conservation", () => {
+      let m = new Model({
+        algorithm,
+        timeLength: 20
+      });
+
+
+      let sA = m.Stock({
+        name: "A"
+      });
+      let sB = m.Stock({
+        name: "B"
+      });
+      let f = m.Flow(sA, sB, {
+        name: "My Flow"
+      });
+      let f2 = m.Flow(sB, sA, {
+        name: "My Flow 2"
+      });
+
+      let total = m.Variable({
+        name: "Total",
+        value: "[[A]] + [[B]]"
+      });
+
+      m.Link(sA, total);
+      m.Link(sB, total);
+
+      f.rate = ".2 * [Alpha]";
+      f2.rate = ".3 * [Alpha]";
+
+
+      sA.initial = 100;
+      sB.initial = 40;
+      
+
+      let res = m.simulate();
+      expect(res.series(total)[0]).toBe(140);
+      expect(res.series(total)[5]).toBe(140);
+      expect(res.series(total)[10]).toBe(140);
+
+      sA.type = "Conveyor";
+      sA.delay = 10;
+      res = m.simulate();
+      expect(res.series(total)[0]).toBe(140);
+      expect(res.series(total)[5]).toBe(140);
+      expect(res.series(total)[10]).toBe(140);
+
+
+      sA.delay = .2;
+      res = m.simulate();
+      expect(res.series(total)[0]).toBe(140);
+      expect(res.series(total)[5]).toBe(140);
+      expect(res.series(total)[10]).toBe(140);
+
+
+      // now let's make [B] also a converter
+      sB.type = "Conveyor";
+      sB.delay = 1;
+      res = m.simulate();
+      expect(res.series(total)[0]).toBe(140);
+      expect(res.series(total)[5]).toBe(140);
+      expect(res.series(total)[10]).toBe(140);
+
+      sB.delay = 1.3;
+      res = m.simulate();
+      expect(res.series(total)[0]).toBe(140);
+      expect(res.series(total)[5]).toBe(140);
+      expect(res.series(total)[10]).toBe(140);
+
+      sB.delay = 0;
+      res = m.simulate();
+      expect(res.series(total)[0]).toBe(140);
+      expect(res.series(total)[5]).toBe(140);
+      expect(res.series(total)[10]).toBe(140);
+    });
+
+
+    test("Conveyor smoothness", () => {
+      let m = new Model({
+        algorithm,
+        timeLength: 20,
+        timeStep: 0.1
+      });
+
+
+      let s = m.Stock({
+        name: "S",
+        type: "Conveyor",
+        delay: 2.2,
+        nonNegative: true
+      });
+      m.Flow(null, s, {
+        name: "in",
+        rate: "Pulse(5, 4, 4)"
+      });
+      m.Flow(s, null, {
+        name: "out",
+        rate: "5"
+      });
+
+      let res = m.simulate();
+      let x = 0.4;
+      expect(+res.series(s)[0].toFixed(5)).toBe(0);
+      expect(+res.series(s)[1].toFixed(5)).toBe(0);
+      expect(+res.series(s)[2].toFixed(5)).toBe(0);
+      expect(+res.series(s)[3].toFixed(5)).toBe(0);
+      expect(+res.series(s)[80].toFixed(5)).toBe(x);
+      expect(+res.series(s)[81].toFixed(5)).toBe(x);
+      expect(+res.series(s)[82].toFixed(5)).toBe(x);
+      expect(+res.series(s)[83].toFixed(5)).toBe(x);
+      expect(+res.series(s)[84].toFixed(5)).toBe(x);
+      expect(+res.series(s)[85].toFixed(5)).toBe(x);
+      expect(+res.series(s)[86].toFixed(5)).toBe(x);
+      expect(+res.series(s)[87].toFixed(5)).toBe(x);
+      expect(+res.series(s)[88].toFixed(5)).toBe(x);
+      expect(+res.series(s)[89].toFixed(5)).toBe(x);
+      expect(+res.series(s)[res.series(s).length - 5].toFixed(5)).toBe(0);
+      expect(+res.series(s)[res.series(s).length - 4].toFixed(5)).toBe(0);
+      expect(+res.series(s)[res.series(s).length - 3].toFixed(5)).toBe(0);
+      expect(+res.series(s)[res.series(s).length - 2].toFixed(5)).toBe(0);
     });
 
 
@@ -1110,6 +1385,81 @@ describe.each([
 
       let res = m.simulate();
       expect(res.series(p3)[3]).toBe(3);
+    });
+
+
+    test("String in variable target string", () => {
+      let m = new Model({ algorithm });
+
+
+      let p = m.Variable({
+        name: "My Variable 1"
+      });
+      let p2 = m.Variable({
+        name: "My Variable 2"
+      });
+      m.Link(p, p2);
+      p.value = "\"a\"";
+      p2.value = "[my variable 1].uppercase()";
+
+      let res = m.simulate();
+      expect(res.series(p)[3]).toBe("a");
+      expect(res.series(p2)[3]).toBe("A");
+    });
+
+
+    test("String in variable target number", () => {
+      let m = new Model({ algorithm });
+
+
+      let p = m.Variable({
+        name: "My Variable 1"
+      });
+      let p2 = m.Variable({
+        name: "My Variable 2"
+      });
+      m.Link(p, p2);
+      p.value = "\"a\"";
+      p2.value = "ceiling([my variable 1])";
+
+      expect(() => m.simulate()).toThrow(/requires a number for the parameter/);
+    });
+
+
+    test("Vector(String) in variable target number", () => {
+      let m = new Model({ algorithm });
+
+
+      let p = m.Variable({
+        name: "My Variable 1"
+      });
+      let p2 = m.Variable({
+        name: "My Variable 2"
+      });
+      m.Link(p, p2);
+      p.value = "{\"a\", \"b\"}";
+      p2.value = "ceiling([my variable 1])";
+
+      expect(() => m.simulate()).toThrow(/requires a number for the parameter/);
+    });
+
+
+    test("Vector(Number) in variable target number", () => {
+      let m = new Model({ algorithm });
+
+
+      let p = m.Variable({
+        name: "My Variable 1"
+      });
+      let p2 = m.Variable({
+        name: "My Variable 2"
+      });
+      m.Link(p, p2);
+      p.value = "{1.2, 3.8}";
+      p2.value = "ceiling([my variable 1])";
+
+      let res = m.simulate();
+      expect(res.series(p2)[3]).toEqual([2, 4]);
     });
 
 
@@ -2491,6 +2841,34 @@ describe.each([
       expect(v0).toHaveLength(11);
       expect(v1).toHaveLength(6);
       expect(v2).toHaveLength(0);
+    });
+
+
+    test("Stop() during initialization", () => {
+      let m = new Model({
+        timeLength: 10
+      });
+
+      m.Stock({
+        initial: "stop()"
+      });
+
+      expect(() => m.simulate()).toThrow(/stop\(\) called/);
+    });
+
+
+    test("Stop() during globals", () => {
+      let m = new Model({
+        timeLength: 10
+      });
+
+      m.globals = "stop()";
+
+      m.Stock({
+        initial: "1"
+      });
+
+      expect(() => m.simulate()).toThrow(/stop\(\) called/);
     });
 
 

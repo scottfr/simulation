@@ -114,12 +114,12 @@ export function createFunctions(simulate) {
 
 
 
-  defineFunction(simulate, "Abs", { params: [{ name: "Number" }], recurse: true }, (x) => {
+  defineFunction(simulate, "Abs", { params: [{ name: "Number" }], recurse: true, leafNeedNum: true }, (x) => {
     let r = toNum(x[0]);
     r.value = fn.abs(r.value);
     return r;
   });
-  defineFunction(simulate, "sin", { params: [{ name: "Number" }], recurse: true }, (x) => {
+  defineFunction(simulate, "sin", { params: [{ name: "Number" }], recurse: true, leafNeedNum: true }, (x) => {
     let z = toNum(x[0]);
 
     if (z.units && !z.units.isUnitless()) {
@@ -133,7 +133,7 @@ export function createFunctions(simulate) {
       });
     }
   });
-  defineFunction(simulate, "cos", { params: [{ name: "Number" }], recurse: true }, (x) => {
+  defineFunction(simulate, "cos", { params: [{ name: "Number" }], recurse: true, leafNeedNum: true }, (x) => {
     let z = toNum(x[0]);
 
     if (z.units && !z.units.isUnitless()) {
@@ -147,7 +147,7 @@ export function createFunctions(simulate) {
       });
     }
   });
-  defineFunction(simulate, "tan", { params: [{ name: "Number" }], recurse: true }, (x) => {
+  defineFunction(simulate, "tan", { params: [{ name: "Number" }], recurse: true, leafNeedNum: true }, (x) => {
     let z = toNum(x[0]);
 
     if (z.units && !z.units.isUnitless()) {
@@ -161,27 +161,27 @@ export function createFunctions(simulate) {
       });
     }
   });
-  defineFunction(simulate, "asin", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "asin", { params: [{ name: "Number", noUnits: true }], recurse: true, leafNeedNum: true }, (x) => {
     return new Material(fn.asin(toNum(x[0]).value));
   });
-  defineFunction(simulate, "acos", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "acos", { params: [{ name: "Number", noUnits: true }], recurse: true, leafNeedNum: true }, (x) => {
     return new Material(fn.acos(toNum(x[0]).value));
   });
-  defineFunction(simulate, "atan", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "atan", { params: [{ name: "Number", noUnits: true }], recurse: true, leafNeedNum: true }, (x) => {
     return new Material(fn.atan(toNum(x[0]).value));
   });
 
-  defineFunction(simulate, "arcsin", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "arcsin", { params: [{ name: "Number", noUnits: true }], recurse: true, leafNeedNum: true }, (x) => {
     return new Material(fn.asin(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]));
   });
-  defineFunction(simulate, "arccos", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "arccos", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     return new Material(fn.acos(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]));
   });
-  defineFunction(simulate, "arctan", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "arctan", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     return new Material(fn.atan(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]));
   });
 
-  defineFunction(simulate, "Sign", { params: [{ name: "Number" }], recurse: true }, (x) => {
+  defineFunction(simulate, "Sign", { params: [{ name: "Number", leafNeedNum: true }], recurse: true }, (x) => {
     let r = toNum(x[0]);
     if (r.value < 0) {
       return div(new Material(-1), new Material(1));
@@ -194,7 +194,7 @@ export function createFunctions(simulate) {
       code: 6006
     });
   });
-  defineFunction(simulate, "Sqrt", { params: [{ name: "Number" }], recurse: true }, (x) => {
+  defineFunction(simulate, "Sqrt", { params: [{ name: "Number", leafNeedNum: true }], recurse: true }, (x) => {
     let r = toNum(x[0]).fullClone();
     if (r.value < 0) {
       throw new ModelError("Sqrt() requires a number greater than or equal to 0.", {
@@ -207,7 +207,7 @@ export function createFunctions(simulate) {
     }
     return r;
   });
-  defineFunction(simulate, "Ln", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "Ln", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     let val = toNum(x[0]).value;
     if (val < 0) {
       throw new ModelError("Ln() requires a number greater than or equal to 0.", {
@@ -216,7 +216,7 @@ export function createFunctions(simulate) {
     }
     return new Material(fn.log(val));
   });
-  defineFunction(simulate, "Log", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "Log", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     let val = toNum(x[0]).value;
     if (val < 0) {
       throw new ModelError("Log() requires a number greater than or equal to 0.", {
@@ -225,32 +225,32 @@ export function createFunctions(simulate) {
     }
     return new Material(fn.log(val, 10));
   });
-  defineFunction(simulate, "Logit", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "Logit", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     let r = toNum(x[0]);
     r.value = fn["-"](fn.log(r.value), fn.log(fn["-"](1, r.value)));
     return r;
   });
-  defineFunction(simulate, "Expit", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "Expit", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     let r = toNum(x[0]);
     r.value = fn["/"](1, fn["+"](1, fn.exp(fn["-"](r.value))));
     return r;
   });
-  defineFunction(simulate, "Round", { params: [{ name: "Number", noUnits: false }], recurse: true }, (x) => {
+  defineFunction(simulate, "Round", { params: [{ name: "Number", noUnits: false, leafNeedNum: true }], recurse: true }, (x) => {
     let r = toNum(x[0]);
     r.value = fn.round(r.value);
     return r;
   });
-  defineFunction(simulate, "Ceiling", { params: [{ name: "Number", noUnits: false }], recurse: true }, (x) => {
+  defineFunction(simulate, "Ceiling", { params: [{ name: "Number", noUnits: false, leafNeedNum: true }], recurse: true }, (x) => {
     let r = toNum(x[0]);
     r.value = fn.ceiling(r.value);
     return r;
   });
-  defineFunction(simulate, "Floor", { params: [{ name: "Number", noUnits: false }], recurse: true }, (x) => {
+  defineFunction(simulate, "Floor", { params: [{ name: "Number", noUnits: false, leafNeedNum: true }], recurse: true }, (x) => {
     let r = toNum(x[0]);
     r.value = fn.floor(r.value);
     return r;
   });
-  defineFunction(simulate, "Exp", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "Exp", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     return new Material(fn.exp(toNum(x[0]).value));
   });
 
@@ -764,7 +764,7 @@ export function createFunctions(simulate) {
     return simulate.varBank["unique"](res);
   });
 
-  defineFunction(simulate, "Factorial", { params: [{ name: "Number", noUnits: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "Factorial", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     return new Material(factorial(toNum(x[0]).value));
   });
 
@@ -1427,7 +1427,7 @@ export function createFunctions(simulate) {
   });
 
   defineFunction(simulate, "Confirm", { params: [{ name: "Message", allowString: true, allowBoolean: true }] }, (x) => {
-    if (typeof window === "undefined" || window.confirm === "undefined") {
+    if (typeof window === "undefined" || (typeof window.confirm === "undefined")) {
       throw new ModelError("Confirm() is not implemented on this platform.", {
         code: 6050
       });
@@ -1658,9 +1658,25 @@ export function defineFunction(simulate, name, definition, fn) {
     let q;
     if (definition.recurse) {
       q = toNum(x[0]);
+      if (configs[0] && configs[0].leafNeedNum) {
+        if (!(q instanceof Vector)) {
+          if (!(q instanceof Material)) {
+            throw new ModelError(`${fnName} requires a number for the parameter '${configs[0].name}'.`, {
+              code: 6058
+            });
+          }
+        }
+      }
     }
     if (definition.recurse && q instanceof Vector) {
       return q.cloneApply((z) => {
+        if (!(z instanceof Vector) && configs[0] && configs[0].leafNeedNum) {
+          if (!(z instanceof Material)) {
+            throw new ModelError(`${fnName} requires a number for the parameter '${configs[0].name}'.`, {
+              code: 6058
+            });
+          }
+        }
         return f([z].concat(x.slice(1)), id);
       });
     } else if (vectorized.length > 0) {

@@ -41,3 +41,12 @@ test("Macros time settings", () => {
   let res = m.simulate();
   expect(res.series(p1)[3]).toBe(1);
 });
+
+
+test("Macros error", () => {
+  let m = new Model();
+
+  m.globals = "x <- 1/";
+
+  expect(() => m.simulate()).toThrow("error with the macros");
+});

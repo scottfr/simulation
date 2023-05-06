@@ -25,15 +25,15 @@ test("Auto function vectorization", () => {
 
 
   variable.value = "log({\"a\"})";
-  expect(() => m.simulate()).toThrow(/does not accept string/);
+  expect(() => m.simulate()).toThrow(/requires a number for the parameter/);
 
 
   variable.value = "log({true})";
-  expect(() => m.simulate()).toThrow(/does not accept boolean/);
+  expect(() => m.simulate()).toThrow(/requires a number for the parameter/);
 
 
   variable.value = "log({false})";
-  expect(() => m.simulate()).toThrow(/does not accept boolean/);
+  expect(() => m.simulate()).toThrow(/requires a number for the parameter/);
 
 
   variable.value = "log(true)";
