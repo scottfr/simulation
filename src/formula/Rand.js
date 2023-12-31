@@ -98,7 +98,7 @@ export function RandNormal(simulate, mu = null, sigma = null) {
   }
 
   let z;
-  z = Math.sqrt(-2 * Math.log(1 - Rand(simulate))) * Math.cos(Rand(simulate) * 2 * 3.141593);
+  z = Math.sqrt(-2 * Math.log(1 - Rand(simulate))) * Math.cos(Rand(simulate) * 2 * Math.PI);
   return z * sigma + (0 + mu);
 }
 

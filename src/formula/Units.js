@@ -86,8 +86,10 @@ export class UnitStore {
     /** @type {UnitStore} */
     this.baseUnits = null;
 
-    /** @type {Object<string, UnitStore>} */
-    this.multiples = {};
+    /** @type {Map<UnitStore, [number, UnitStore, boolean]>} */
+    this.multiples = new Map();
+    /** @type {Map<UnitStore, [number, UnitStore, boolean]>} */
+    this.divisions = new Map();
 
     this.id = getUnitsId(this.names, this.exponents);
   }
@@ -96,6 +98,21 @@ export class UnitStore {
     return !this.exponents.find(x => x !== 0);
   }
 
+  /**
+   * Also check if the units would simplify to unitless.
+   * 
+   * @returns 
+   */
+  isDeepUnitless() {
+    if (!this.exponents.find(x => x !== 0)) {
+      return true;
+    }
+  
+    this.addBase();
+  
+    return !this.baseUnits.exponents.find(x => x !== 0);
+  }
+  
   addBase() {
     if (this.toBase !== null) {
       return;
@@ -150,64 +167,135 @@ export class UnitStore {
    * @returns {string}
    */
   toStringShort() {
+    let den = [];
+    let num = [];
     let s = "";
     for (let i = 0; i < this.names.length; i++) {
-      if (s !== "") {
-        s = s + ",";
-      }
-      s = s + this.names[i];
-      if (this.exponents[i] !== 1) {
-        s = s + "^" + this.exponents[i];
+      if (this.exponents[i] > 0) {
+        num.push({ name: this.names[i], exponent: this.exponents[i] });
+      } else if (this.exponents[i] < 0) {
+        den.push({ name: this.names[i], exponent: -this.exponents[i] });
       }
     }
+    if (num.length > 0) {
+      s = num.map(x => x.name + (x.exponent !== 1 ? "^" + x.exponent : "")).join("*");
+    } else {
+      s = "1";
+    }
+    if (den.length > 0) {
+      s = s + "/" + den.map(x => x.name + (x.exponent !== 1 ? "^" + x.exponent : "")).join("*");
+    }
+
     return s;
   }
 
   /**
    * @param {UnitStore} rhs
-   * @param {number} exponent
+   * @param {boolean} multiplication (false if division)
    *
-   * @returns {UnitStore}
+   * @returns {[number, UnitStore, boolean]}
    */
-  multiply(rhs, exponent) {
-    let id = rhs.id + ";" + exponent;
+  multiply(rhs, multiplication) {
+    let exponent = multiplication ? 1 : -1;
+    let cache = multiplication ? this.multiples : this.divisions;
 
 
-    if (!(id in this.multiples)) {
-      if (this.toBase === null) {
-        this.addBase();
+    if (!cache.has(rhs)) {
+      let lhsUnits = /** @type {UnitStore} */ (this);
+      let rhsUnits = rhs;
+      
+      let lhsNames = null;
+      let lhsExponents = null;
+      let rhsNames = null;
+      let rhsExponents = null;
+      for (let i = 0; i < (lhsNames || lhsUnits.names).length; i++) {
+        let j = (rhsNames || rhsUnits.names).indexOf((lhsNames || lhsUnits.names)[i]);
+        if (j > -1 && (lhsExponents || lhsUnits.exponents)[i] === (-exponent) * (rhsExponents || rhsUnits.exponents)[j]) {
+          if (!lhsNames) {
+            lhsNames = lhsUnits.names.slice();
+            lhsExponents = lhsUnits.exponents.slice();
+            rhsNames = rhsUnits.names.slice();
+            rhsExponents = rhsUnits.exponents.slice();
+          }
+          lhsNames.splice(i, 1);
+          lhsExponents.splice(i, 1);
+          rhsNames.splice(j, 1);
+          rhsExponents.splice(j, 1);
+          i--;
+        }
       }
-      if (rhs.toBase === null) {
-        rhs.addBase();
+
+      if (lhsNames) {
+        lhsUnits = lhsUnits.manager.getUnitStore(lhsNames, lhsExponents);
+        rhsUnits = rhsUnits.manager.getUnitStore(rhsNames, rhsExponents);
       }
 
+      if (!lhsUnits && !rhsUnits) {
+        cache.set(rhs, [1, undefined, true]);
+        return cache.get(rhs);
+      } else if (!lhsUnits) {
+        cache.set(rhs, [1, multiplication ? rhsUnits : rhsUnits.power(-1), true]);
+        return cache.get(rhs);
+      } else if (!rhsUnits) {
+        cache.set(rhs, [1, lhsUnits, true]);
+        return cache.get(rhs);
+      }
+      
+      if (lhsUnits.toBase === null) {
+        lhsUnits.addBase();
+      }
+      if (rhsUnits.toBase === null) {
+        rhsUnits.addBase();
+      }
+
+
+      let lhsBaseUnits = lhsUnits.baseUnits.names;
+      let rhsBaseUnits = rhsUnits.baseUnits.names;
+      // check if there is any overlap
+      let overlap = false;
+      for (let i = 0; i < lhsBaseUnits.length; i++) {
+        if (rhsBaseUnits.includes(lhsBaseUnits[i])) {
+          overlap = true;
+          break;
+        }
+      }
+
+      if (!overlap) {
+        let newUnits = lhsUnits.manager.getUnitStore(
+          lhsUnits.names.concat(rhsUnits.names),
+          lhsUnits.exponents.concat(multiplication ? rhsUnits.exponents : rhsUnits.exponents.map(x => -x))
+        );
+        cache.set(rhs, [1, newUnits, true]);
+        return cache.get(rhs);
+      }
+      
 
 
       let names;
       let exponents;
-      if (this.baseUnits) {
-        names = this.baseUnits.names.slice();
-        exponents = this.baseUnits.exponents.slice();
+      if (lhsUnits.baseUnits) {
+        names = lhsUnits.baseUnits.names.slice();
+        exponents = lhsUnits.baseUnits.exponents.slice();
 
 
-        if (rhs.baseUnits) {
-          for (let i = 0; i < rhs.baseUnits.names.length; i++) {
-            let j = names.indexOf(rhs.baseUnits.names[i]);
+        if (rhsUnits.baseUnits) {
+          for (let i = 0; i < rhsUnits.baseUnits.names.length; i++) {
+            let j = names.indexOf(rhsUnits.baseUnits.names[i]);
             if (j !== -1) {
-              exponents[j] = exponents[j] + rhs.baseUnits.exponents[i] * exponent;
+              exponents[j] = exponents[j] + rhsUnits.baseUnits.exponents[i] * exponent;
             } else {
               let found = false;
               for (let k = 0; k < names.length; k++) {
-                if (rhs.baseUnits.names[i] < names[k]) {
-                  names.splice(k, 0, rhs.baseUnits.names[i]);
-                  exponents.splice(k, 0, rhs.baseUnits.exponents[i] * exponent);
+                if (rhsUnits.baseUnits.names[i] < names[k]) {
+                  names.splice(k, 0, rhsUnits.baseUnits.names[i]);
+                  exponents.splice(k, 0, rhsUnits.baseUnits.exponents[i] * exponent);
                   found = true;
                   break;
                 }
               }
               if (!found) {
-                names.push(rhs.baseUnits.names[i]);
-                exponents.push(rhs.baseUnits.exponents[i] * exponent);
+                names.push(rhsUnits.baseUnits.names[i]);
+                exponents.push(rhsUnits.baseUnits.exponents[i] * exponent);
               }
             }
           }
@@ -220,13 +308,18 @@ export class UnitStore {
           }
         }
       } else {
-        names = rhs.baseUnits.names.slice();
-        exponents = rhs.baseUnits.exponents.slice();
+        names = rhsUnits.baseUnits.names.slice();
+        exponents = rhsUnits.baseUnits.exponents.slice();
       }
-      this.multiples[id] = this.manager.getUnitStore(names, exponents);
+      let newUnits = this.manager.getUnitStore(names, exponents);
+      cache.set(rhs, [
+        multiplication ? fn["*"](lhsUnits.toBase, rhsUnits.toBase) : fn["/"](lhsUnits.toBase, rhsUnits.toBase),
+        newUnits,
+        !newUnits
+      ]);
     }
 
-    return this.multiples[id];
+    return cache.get(rhs);
   }
 
   /**

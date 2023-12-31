@@ -7,28 +7,36 @@ import { Vector } from "./Vector.js";
 import { createFunctions as generalCreateFunctions } from "./CalcFunctions.js";
 import { createFunctions as modelerCreateFunctions } from "../Functions.js";
 import { ModelError } from "./ModelError.js";
-import { org } from "../../vendor/antlr3-all.js";
-import { FormulaLexer } from "./grammar/FormulaLexer.js";
-import { FormulaParser } from "./grammar/FormulaParser.js";
+import antlr from "../../vendor/antlr4-all.js";
+import FormulaLexer from "./grammar/FormulaLexer.js";
+import FormulaParser from "./grammar/FormulaParser.js";
 import { toHTML } from "../Utilities.js";
-
-
-// Suppress default ANTLR error alert. We handle error differently.
-org.antlr.runtime.BaseRecognizer.prototype.emitErrorMessage = () => { };
 
 
 /**
  * @param {import("../Simulator").Simulator} simulate
  */
 export function bootCalc(simulate) {
-  simulate.varBank = Object.create(null);
+  simulate.varBank = new Map();
 
-  simulate.varBank["-parent"] = null;
-  simulate.varBank["e"] = new Material(2.71828182845904523536);
-  simulate.varBank["pi"] = new Material(3.14159265358979323846264338);
-  simulate.varBank["phi"] = new Material(1.61803399);
+  simulate.varBank.set("-parent", null);
+  simulate.varBank.set("e", new Material(2.71828182845904523536));
+  simulate.varBank.set("pi", new Material(3.14159265358979323846264338));
+  simulate.varBank.set("phi", new Material(1.61803399));
   generalCreateFunctions(simulate);
   modelerCreateFunctions(simulate);
+}
+
+function getInnerBlock(node, parser, source) {
+  let innerBlock = node.children.find(x => x instanceof FormulaParser.InnerBlockContext);
+  if (!innerBlock || !innerBlock.children) {
+    return new TreeNode("", "LINES", {
+      line: node.start.line,
+      source
+    });
+  }
+
+  return convertToObject(innerBlock, parser, source);
 }
 
 
@@ -79,22 +87,79 @@ export let StringObject = {};
 export let VectorObject = {};
 
 
-export function createTree(input) {
-  let cstream = new org.antlr.runtime.ANTLRStringStream(input.replace(/\\n/g, "\n"));
-  let lexer = new FormulaLexer(cstream);
-  let tstream = new org.antlr.runtime.CommonTokenStream(lexer);
-  let parser = new FormulaParser(tstream);
-  // @ts-ignore
-  let parsedTree = parser.lines();
-  let root = convertToObject(parsedTree.tree, parser);
+
+
+
+/**
+ * @param {string} input 
+ * @param {string} source 
+ * @param {import("../Simulator").Simulator} simulate
+ * @returns 
+ */
+export function createTree(input, source, simulate) {
+  simulate.evaluatingPosition = {
+    line: 1,
+    source
+  };
+
+  const chars = new antlr.InputStream(input.replace(/\\n/g, "\n"));
+  const lexer = new FormulaLexer(chars);
+  lexer.removeErrorListeners();
+  lexer.addErrorListener({
+    syntaxError: (recognizer, offendingSymbol, line, column, msg, err) => {
+      simulate.evaluatingPosition.line = line;
+      throw new ModelError("Invalid equation syntax", {
+        code: 9000
+      });
+    }
+  });
+  const tokens = new antlr.CommonTokenStream(lexer);
+
+  const parser = new FormulaParser(tokens);
+  parser._interp.predictionMode = antlr.atn.PredictionMode.SLL; 
+  parser.errorHandler = new antlr.error.BailErrorStrategy();
+
+  parser.removeErrorListeners();
+  parser.addErrorListener({
+    syntaxError: (recognizer, offendingSymbol, line, column, msg, err) => {
+      simulate.evaluatingPosition.line = line;
+      throw new ModelError("Invalid equation syntax", {
+        code: 9000
+      });
+    },
+    reportAttemptingFullContext: (...args) => {
+      // console.log("reportAttemptingFullContext", args);
+    },
+    reportAmbiguity: (...args) => {
+      // console.log("reportAmbiguity", args);
+    },
+    reportContextSensitivity: (...args) => {
+      // console.log("reportContextSensitivity", args);
+    }
+  });
+  const parsedTree = parser.lines();
+  removeWhitespaceTokens(parsedTree);
+  let root = convertToObject(parsedTree, parser, source);
 
   return root;
+}
+
+function removeWhitespaceTokens(node) {
+  if (node.children) {
+    node.children = node.children.filter(x => {
+      if (x.symbol?.type === FormulaLexer.R_ || x.symbol?.type === FormulaLexer.R__) {
+        return false;
+      }
+      removeWhitespaceTokens(x);
+      return true;
+    });
+  }
 }
 
 
 /**
  * @param {Object} root
- * @param {Object} nodeBase
+ * @param {Map} nodeBase
  * @param {import("../Simulator").Simulator} simulate
  */
 export function trimTree(root, nodeBase, simulate) {
@@ -104,11 +169,14 @@ export function trimTree(root, nodeBase, simulate) {
 
 /**
  * @param {Object} root
- * @param {Object} varBank
+ * @param {Map} varBank
  * @param {import("../Simulator").Simulator} simulate
  */
 export function evaluateTree(root, varBank, simulate) {
-  simulate.evaluatingLine = undefined;
+  simulate.evaluatingPosition = {
+    line: null,
+    source: null
+  };
   try {
     return evaluateNode(root, varBank, simulate);
   } catch (err) {
@@ -121,21 +189,22 @@ export function evaluateTree(root, varBank, simulate) {
 }
 
 
-/**
- * @param {string} text
- * @param {string} typeName
- * @param {number} line
- * @param {any[]=} children
- */
+
 export class TreeNode {
-  constructor(text, typeName, line, children = []) {
+  /**
+   * @param {string} text
+   * @param {string} typeName
+   * @param {{ line: number, source: string }} position
+   * @param {any[]=} children
+   */
+  constructor(text, typeName, position, children = []) {
     this.origText = text;
 
     this.text = text.toLowerCase();
 
     this.typeName = typeName;
 
-    this.line = line;
+    this.position = position;
 
     this.children = children;
 
@@ -147,7 +216,7 @@ export class TreeNode {
   }
 
   cloneStructure() {
-    let res = new TreeNode(this.origText, this.typeName, this.line);
+    let res = new TreeNode(this.origText, this.typeName, this.position);
     res.children = this.children.map(child => {
       if (child instanceof TreeNode) {
         return child.cloneStructure();
@@ -159,30 +228,1033 @@ export class TreeNode {
   }
 }
 
-
-function convertToObject(node, parser) {
-  let t = node.getToken();
-
-  if (!t) {
-    throw new ModelError("Invalid syntax.", {
-      code: 7000
-    });
+/**
+ * @param {Partial<import("antlr4").ParserRuleContext>} node 
+ * @param {function(Partial<import("antlr4").ParserRuleContext>):TreeNode} fn 
+ * @param {*} parser 
+ * @param {string} source 
+ * @returns 
+ */
+function flatChildrenToTreeRight(node, fn, parser, source) {
+  let children = node.children.slice();
+  let isFirst = true;
+  while (children.length > 1) {
+    let right = children.pop();
+    let operator = children.pop();
+    let left = children.pop();
+    let current = fn(operator);
+    current.children = [convertToObject(left, parser, source), isFirst ? convertToObject(right, parser, source) : right];
+    // @ts-ignore
+    children.push(current);
+    isFirst = false;
   }
+  return children[0];
+}
 
-  let current = new TreeNode(t.getText(), parser.getTokenNames()[t.getType()], t.line);
 
-  if (node.getChildCount() > 0) {
-    let children = node.getChildren();
+/**
+ * @param {Partial<import("antlr4").ParserRuleContext>} node 
+ * @param {function(Partial<import("antlr4").ParserRuleContext>):TreeNode} fn 
+ * @param {*} parser 
+ * @param {string} source 
+ * @returns 
+ */
+function flatChildrenToTreeLeft(node, fn, parser, source) {
+  let children = node.children.slice();
+  let isFirst = true;
+  while (children.length > 1) {
+    let left = children.shift();
+    let operator = children.shift();
+    let right = children.shift();
+    let current = fn(operator);
+    current.children = [isFirst ? convertToObject(left, parser, source) : left, convertToObject(right, parser, source) ];
+    // @ts-ignore
+    children.unshift(current);
+    isFirst = false;
+  }
+  return children[0];
+}
+
+
+/* @type {WeakMap<Partial<import("antlr4").ParserRuleContext>, string>} */
+let nodeTexts = new WeakMap();
+
+/**
+ * @param {Partial<import("antlr4").ParserRuleContext>} node 
+ */
+function getNodeText(node) {
+  let t = nodeTexts.get(node);
+  if (t !== undefined) {
+    return t;
+  
+  }
+  let text = node.getText();
+  nodeTexts.set(node, text);
+  return text;
+}
+
+
+/**
+ * @param {Partial<import("antlr4").ParserRuleContext>} node 
+ * @param {object} parser 
+ * @param {string} source
+ * @returns 
+ */
+function convertToObject(node, parser, source) {
+  // @ts-ignore
+  let ruleIndex = node.ruleIndex;
+  if (ruleIndex === FormulaParser.RULE_lines) {
+    let current = new TreeNode("", "LINES", {
+      line: node.start.line,
+      source
+    });
+    let children = node.children;
     for (let i = 0; i < children.length; i++) {
-      current.children.push(convertToObject(children[i], parser));
+      // skip EOF symbol
+      if (getNodeText(children[i]) === "<EOF>") {
+        continue;
+      }
+      if (getNodeText(children[i]) === "\n" || getNodeText(children[i]) === "\r\n") {
+        continue;
+      }
+      current.children.push(convertToObject(children[i], parser, source));
 
-      if (!current.line && current.children[current.children.length - 1].line) {
-        current.line = current.children[current.children.length - 1].line;
+      if (!current.position?.line && current.children[current.children.length - 1].position?.line) {
+        current.position = current.children[current.children.length - 1].position;
       }
     }
+    
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_multiplicativeExpression) {
+    if (node.children.length > 1) {
+      // [left, '*'|'/'|'%'|'mod', right]
+      return flatChildrenToTreeLeft(node, (op) => {
+        let operator = getNodeText(op);
+        return new TreeNode("", operator === "*" ? "MULT" : ( operator === "/" ? "DIV": "MOD"), {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }, parser, source);
+    }
+
+  } else if (ruleIndex === FormulaParser.RULE_number) {
+    let current = new TreeNode(getNodeText(node), "FLOAT", {
+      line: node.start.line,
+      source
+    });
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_value) {
+    let token = node.children[0];
+    // convert token 
+
+    // @ts-ignore
+    let symbol = token.symbol;
+
+    if (symbol) {
+      if (symbol.type === FormulaLexer.BOOL) {
+        return new TreeNode(getNodeText(token), getNodeText(token).toLowerCase() === "true" ? "TRUE" : "FALSE", {
+          line: symbol.line,
+          source
+        });
+      } else if (symbol.type === FormulaLexer.STRING) {
+        return new TreeNode(getNodeText(token), "STRING", {
+          line: symbol.line,
+          source
+        });
+      } else if (symbol.type === FormulaLexer.IDENT) {
+        return new TreeNode(getNodeText(token), "IDENT", {
+          line: symbol.line,
+          source
+        });
+      } else if (symbol.type === FormulaLexer.PRIMITIVE) {
+        return new TreeNode(getNodeText(token), "PRIMITIVE", {
+          line: node.start.line,
+          source
+        });
+      }
+    }
+  //boolean lexer
+  // @ts-ignore
+  } else if (node.symbol?.type ===FormulaLexer.BOOL) {
+    return new TreeNode("", getNodeText(node).toLowerCase() === "true" ? "TRUE" : "FALSE", {
+      // @ts-ignore
+      line: node.symbol.line,
+      source
+    });
+  } else if (ruleIndex === FormulaParser.RULE_returnExp) {
+    /**
+     * returnExp
+	   * :
+	   * RETURNSTATEMENT^ logicalExpression
+	   * ;
+     */
+
+    let current = new TreeNode("return", "RETURN", {
+      line: node.start.line,
+      source
+    }, [convertToObject(node.children[1], parser, source)]);
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_throwExp) {
+    /**
+     * throwExp
+	   * : THROWSTATEMENT primaryExpression -> ^(THROW primaryExpression)
+	   * ;
+     */
+    let current = new TreeNode("", "THROW", {
+      line: node.start.line,
+      source
+    }, [convertToObject(node.children[1], parser, source)]);
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_additiveExpression) {
+    if (node.children.length > 1) {
+      // [left, '+'|'-', right]
+      return flatChildrenToTreeLeft(node, (op) => {
+        let operator = getNodeText(op);
+        return new TreeNode(getNodeText(op), operator === "+" ? "PLUS" : "MINUS", {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }, parser, source);
+    }
+  } else if (ruleIndex === FormulaParser.RULE_powerExpression) {
+    if (node.children.length > 1) {
+      // [left, '^', right]
+      return flatChildrenToTreeRight(node, (op) => {
+        return new TreeNode("", "POWER", {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }, parser, source);
+    }
+  } else if (ruleIndex === FormulaParser.RULE_unaryOrNegate) {
+    if (node.children.length > 1) {
+      let current = new TreeNode("", "NEGATE", {
+        line: node.start.line,
+        source
+      });
+      current.children = [convertToObject(node.children[1], parser, source)];
+      return current;
+    }
+  } else if (ruleIndex === FormulaParser.RULE_arrayExpression) {
+    if (node.children.length > 1) {
+      // [left, ':', (step : ':',)? right]
+      let current = new TreeNode("", "RANGE", {
+        line: node.start.line,
+        source
+      });
+      current.children = [convertToObject(node.children[0], parser, source), convertToObject(node.children[2], parser, source)];
+      if (node.children.length > 3) {
+        current.children.push(convertToObject(node.children[4], parser, source));
+      }
+      return current;
+    }
+  } else if (ruleIndex === FormulaParser.RULE_unaryExpression) {
+    if (node.children.length > 1) {
+      // ['!', right]
+      let current = new TreeNode("", "NOT", {
+        line: node.start.line,
+        source
+      });
+      current.children = [convertToObject(node.children[1], parser, source)];
+      return current;
+    }
+  } else if (ruleIndex === FormulaParser.RULE_booleanXORExpression) {
+    if (node.children.length > 1) {
+      // [left, 'XOR', right]
+      return flatChildrenToTreeLeft(node, (op) => {
+        return new TreeNode("", "XOR", {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }, parser, source);
+    }
+  } else if (ruleIndex === FormulaParser.RULE_equalityExpression) {
+    if (node.children.length > 1) {
+      // [left, '='|'=='|'<>'|'!=', right]
+      return flatChildrenToTreeLeft(node, (op) => {
+        let operator = getNodeText(op);
+        return new TreeNode("", operator === "=" || operator === "==" ? "EQUALS" : "NOTEQUALS", {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }, parser, source);
+    }
+  } else if (ruleIndex === FormulaParser.RULE_relationalExpression) {
+    if (node.children.length > 1) {
+      // [left, '<'|'>'|'<='|'>=', right]
+      return flatChildrenToTreeLeft(node, (op) => {
+        let operator = getNodeText(op);
+        return new TreeNode("", operator === "<" ? "LT" : (operator === ">" ? "GT" : (operator === "<=" ? "LTEQ" : "GTEQ")), {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }, parser, source);
+    }
+  } else if (ruleIndex === FormulaParser.RULE_logicalExpression) {
+    if (node.children.length > 1) {
+      // [left, '||'|'OR', right]
+      return flatChildrenToTreeLeft(node, (op) => {
+        return new TreeNode("", "OR", {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }, parser, source);
+    }
+  } else if (ruleIndex === FormulaParser.RULE_booleanAndExpression) {
+    if (node.children.length > 1) {
+      // [left, '&&'|'AND', right]
+      return flatChildrenToTreeLeft(node, (op) => {
+        return new TreeNode("", "AND", {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }
+      , parser, source);
+    }
+  } else if (ruleIndex === FormulaParser.RULE_negnumber) {
+    /**
+     * negnumber	: '-' number -> ^(NEGATE number);
+     */
+
+    return new TreeNode(getNodeText(node), "FLOAT", {
+      line: node.start.line,
+      source
+    });
+  } else if (ruleIndex === FormulaParser.RULE_negationExpression) {
+    if (node.children.length > 1) {
+      // ['-', right]
+      let current = new TreeNode("", "NEGATE", {
+        line: node.start.line,
+        source
+      });
+      current.children = [convertToObject(node.children[1], parser, source)];
+      return current;
+    }
+  // boolean lexer
+  } else if (ruleIndex === FormulaParser.RULE_anonFunctionDef) {
+    /**
+     * anonFunctionDef
+     * : FUNCTIONSTATEMENT  '(' (IDENT  (EQUALS  defaultValue | (',' IDENT )*) (',' IDENT EQUALS defaultValue )*)? ')' ( (NEWLINE+ innerBlock  ENDBLOCK FUNCTIONSTATEMENT) | expression) -> ^(ANONFUNCTION ^(PARAMS IDENT*) ^(DEFAULTS defaultValue*) innerBlock? expression?)
+     * ;
+     */
+    let current = new TreeNode("", "ANONFUNCTION", {
+      line: node.start.line,
+      source
+    });
+    let params = new TreeNode("", "PARAMS", {
+      line: node.start.line,
+      source
+    });
+    let defaults = new TreeNode("", "DEFAULTS", {
+      line: node.start.line,
+      source
+    });
+    params.children = [];
+    defaults.children = [];
+    // set params and defaults
+    for (let i = 2; i < node.children.length; i++) {
+      if (getNodeText(node.children[i]) === ")") {
+        break;
+      }
+      if (getNodeText(node.children[i]) === ",") {
+        continue;
+      }
+      params.children.push(new TreeNode(getNodeText(node.children[i]), "IDENT", {
+        line: node.start.line,
+        source
+      }));
+      if (getNodeText(node.children[i + 1]) === "=") {
+        defaults.children.push(convertToObject(node.children[i + 2], parser, source));
+        i += 2;
+      }
+    }
+    current.children = [params, defaults];
+    if (node.children[node.children.length - 1] instanceof FormulaParser.ExpressionContext) {
+      current.children.push(convertToObject(node.children[node.children.length - 1], parser, source));
+    } else {
+      current.children.push(getInnerBlock(node, parser, source));
+    }
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_functionDef) {
+    /**
+     functionDef
+	: FUNCTIONSTATEMENT IDENT '(' (IDENT  (EQUALS  defaultValue | (',' IDENT )*) (',' IDENT EQUALS defaultValue )*)? ')' NEWLINE+ innerBlock  ENDBLOCK FUNCTIONSTATEMENT -> ^(FUNCTION ^(PARAMS IDENT*) ^(DEFAULTS defaultValue*) innerBlock)
+	;
+
+     */
+
+    let current = new TreeNode("", "FUNCTION", {
+      line: node.start.line,
+      source
+    });
+    let params = new TreeNode("", "PARAMS", {
+      line: node.start.line,
+      source
+    });
+    let defaults = new TreeNode("", "DEFAULTS", {
+      line: node.start.line,
+      source
+    });
+    params.children.push(new TreeNode(getNodeText(node.children[1]), "IDENT", {
+      line: node.start.line,
+      source
+    }));
+
+    // set params and defaults
+    for (let i = 3; i < node.children.length; i++) {
+      if (getNodeText(node.children[i]) === ")") {
+        break;
+      }
+      if (getNodeText(node.children[i]) === ",") {
+        continue;
+      }
+      params.children.push(new TreeNode(getNodeText(node.children[i]), "IDENT", {
+        line: node.start.line,
+        source
+      }));
+      if (getNodeText(node.children[i + 1]) === "=") {
+        defaults.children.push(convertToObject(node.children[i + 2], parser, source));
+        i += 2;
+      }
+    }
+    current.children = [params, defaults, getInnerBlock(node, parser, source)];
+    return current;
+
+  } else if (ruleIndex === FormulaParser.RULE_innerBlock) {
+    /**
+     * innerBlock
+	   * :	(expression  (NEWLINE+))* -> ^(LINES expression+)
+	   *;
+     */
+    let current = new TreeNode("", "LINES", {
+      line: node.start.line,
+      source
+    });
+    for (let i = 0; i < node.children.length; i++) {
+      if (getNodeText(node.children[i]) === "\n" || getNodeText(node.children[i]) === "\r\n") {
+        continue;
+      }
+      current.children.push(convertToObject(node.children[i], parser, source));
+    }
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_newObject) {
+    /**
+     newObject
+: NEWSTATEMENT IDENT funCall? -> ^(NEW IDENT funCall?);
+     */
+    let current = new TreeNode("", "NEW", {
+      line: node.start.line,
+      source
+    });
+    current.children = [new TreeNode(getNodeText(node.children[1]), "IDENT", {
+      line: node.start.line,
+      source
+    })];
+    if (node.children.length > 2) {
+      current.children.push(convertToObject(node.children[2], parser, source));
+    }
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_whileLoop) {
+    /**
+     * 
+whileLoop
+	: WHILESTATEMENT logicalExpression NEWLINE+ innerBlock  ENDBLOCK LOOPSTATEMENT -> ^(WHILE logicalExpression innerBlock)
+	;
+     */
+
+    let current = new TreeNode("", "WHILE", {
+      line: node.start.line,
+      source
+    });
+    current.children = [
+      convertToObject(node.children[1], parser, source),
+      getInnerBlock(node, parser, source)
+    ];
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_forLoop) {
+    /**
+     
+forLoop
+	: FORSTATEMENT IDENT FROMSTATEMENT logicalExpression TOSTATEMENT logicalExpression (BYSTATEMENT logicalExpression)? NEWLINE+ innerBlock  ENDBLOCK LOOPSTATEMENT -> ^(FOR IDENT ^(PARAMS logicalExpression*) innerBlock)
+	;
+     */
+    let current = new TreeNode("", "FOR", {
+      line: node.start.line,
+      source
+    });
+    current.children = [new TreeNode(getNodeText(node.children[1]), "IDENT", {
+      line: node.start.line,
+      source
+    }), new TreeNode("", "PARAMS", {
+      line: node.start.line,
+      source
+    },
+    node.children.filter(x => x instanceof FormulaParser.LogicalExpressionContext).map(x => convertToObject(x, parser, source))),
+    getInnerBlock(node, parser, source)
+    ];
+
+    return current;
+
+  } else if (ruleIndex === FormulaParser.RULE_forInLoop) {
+    /**
+     
+forInLoop
+	: FORSTATEMENT IDENT INSTATEMENT logicalExpression NEWLINE+ innerBlock  ENDBLOCK LOOPSTATEMENT  -> ^(FORIN IDENT logicalExpression innerBlock)
+	;
+     */
+
+    let current = new TreeNode("", "FORIN", {
+      line: node.start.line,
+      source
+    });
+    current.children = [new TreeNode(getNodeText(node.children[1]), "IDENT", {
+      line: node.start.line,
+      source
+    }),
+    convertToObject(node.children[3], parser, source),
+    getInnerBlock(node, parser, source)
+    ];
+
+    return current;
+
+  } else if (ruleIndex === FormulaParser.RULE_ifThenElse) {
+    /**
+     
+ifThenElse
+	: IFSTATEMENT logicalExpression THENSTATEMENT  NEWLINE+ innerBlock  (ELSESTATEMENT IFSTATEMENT logicalExpression THENSTATEMENT NEWLINE+ innerBlock)* (ELSESTATEMENT NEWLINE+ innerBlock)? ENDBLOCK IFSTATEMENT -> ^(IFTHENELSE ^(PARAMS logicalExpression+) ^(PARAMS innerBlock+))
+	;
+     */
+    let current = new TreeNode("", "IFTHENELSE", {
+      line: node.start.line,
+      source
+    });
+
+    // find innerblocks, if there isn't an innerblock between two else statements, create an empty one
+    let innerBlocks = [];
+    // @ts-ignore
+    let potentialInnerBlocks = node.children.filter(x => x instanceof FormulaParser.InnerBlockContext || x.symbol?.type === FormulaLexer.ELSESTATEMENT || x.symbol?.type === FormulaLexer.ENDBLOCK);
+    let hadBlock = false;
+    for (let i = 0; i < potentialInnerBlocks.length; i++) {
+      if (potentialInnerBlocks[i] instanceof FormulaParser.InnerBlockContext) {
+        hadBlock = true;
+        innerBlocks.push(convertToObject(potentialInnerBlocks[i], parser, source));
+      } else {
+        if (!hadBlock) {
+          innerBlocks.push(new TreeNode("", "LINES", {
+            line: node.start.line,
+            source
+          }));
+        }
+        hadBlock = false;
+      }
+    }
+
+    current.children = [
+      new TreeNode("", "PARAMS", {
+        line: node.start.line,
+        source
+      },
+      node.children.filter(x => x instanceof FormulaParser.LogicalExpressionContext).map(x => convertToObject(x, parser, source))),
+      new TreeNode("", "PARAMS", {
+        line: node.start.line,
+        source
+      },
+      innerBlocks)
+    ];
+
+    return current;
+
+  
+  } else if (ruleIndex === FormulaParser.RULE_tryCatch) {
+    /**
+     
+tryCatch
+	: TRYSTATEMENT NEWLINE+ innerBlock CATCHSTATEMENT IDENT NEWLINE+  innerBlock ENDBLOCK TRYSTATEMENT -> ^(TRYCATCH innerBlock* IDENT)
+	;
+     */
+    let current = new TreeNode("", "TRYCATCH", {
+      line: node.start.line,
+      source
+    });
+    // find innerBlocks, replacing with lines if missing
+    let innerBlocks = [];
+    // @ts-ignore
+    let potentialInnerBlocks = node.children.filter(x => x instanceof FormulaParser.InnerBlockContext || x.symbol?.type === FormulaLexer.CATCHSTATEMENT || x.symbol?.type === FormulaLexer.ENDBLOCK);
+    let hadBlock = false;
+    for (let i = 0; i < potentialInnerBlocks.length; i++) {
+      if (potentialInnerBlocks[i] instanceof FormulaParser.InnerBlockContext) {
+        hadBlock = true;
+        innerBlocks.push(convertToObject(potentialInnerBlocks[i], parser, source));
+      } else {
+        if (!hadBlock) {
+          innerBlocks.push(new TreeNode("", "LINES", {
+            line: node.start.line,
+            source
+          }));
+        }
+        hadBlock = false;
+      }
+    }
+    
+    current.children = innerBlocks;
+
+
+    // @ts-ignore
+    current.children.push(new TreeNode(getNodeText(node.children.find(x => x?.symbol?.type === FormulaLexer.IDENT)), "IDENT", {
+      line: node.start.line,  
+      source
+    }));
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_assignment) {
+    /**
+     * assignment
+	   * :
+	   * IDENT '(' (IDENT  (EQUALS defaultValue | (',' IDENT )*) (',' IDENT EQUALS defaultValue )*)? ')' '<-' logicalExpression -> ^(FUNCTION ^(PARAMS IDENT*) ^(DEFAULTS defaultValue*) logicalExpression) |
+	   * (PRIMITIVE | assigned) (',' (PRIMITIVE | assigned))*  '<-' logicalExpression -> ^(ASSIGN PRIMITIVE* assigned* logicalExpression)
+	   * ;
+     */
+    if (getNodeText(node.children[1]) === "(") {
+      let current = new TreeNode("", "FUNCTION", {
+        line: node.start.line,
+        source
+      });
+      let params = new TreeNode("", "PARAMS", {
+        line: node.start.line,
+        source
+      });
+      let defaults = new TreeNode("", "DEFAULTS", {
+        line: node.start.line,
+        source
+      });
+      params.children.push(new TreeNode(getNodeText(node.children[0]), "IDENT", {
+        line: node.start.line,
+        source
+      }));
+      // set params and defaults
+      for (let i = 2; i < node.children.length; i++) {
+        if (getNodeText(node.children[i]) === "<-") {
+          break;
+        }
+        if (getNodeText(node.children[i]) === "," || getNodeText(node.children[i]) === ")") {
+          continue;
+        }
+        params.children.push(new TreeNode(getNodeText(node.children[i]), "IDENT", {
+          line: node.start.line,
+          source
+        }));
+        if (getNodeText(node.children[i + 1]) === "=") {
+          defaults.children.push(convertToObject(node.children[i + 2], parser, source));
+          i += 2;
+        }
+      }
+      current.children = [params, defaults, convertToObject(node.children[node.children.length - 1], parser, source)];
+      return current;
+    } else {
+      let current = new TreeNode("", "ASSIGN", {
+        line: node.start.line,
+        source
+      });
+      for (let i = 0; i < node.children.length; i++) {
+        if (getNodeText(node.children[i]) === ",") {
+          continue;
+        }
+        if (getNodeText(node.children[i]) === "<-") {
+          continue;
+        }
+        // @ts-ignore
+        if (node.children[i].symbol?.type === FormulaLexer.PRIMITIVE) {
+          current.children.push(new TreeNode(getNodeText(node.children[i]), "PRIMITIVE", {
+            // @ts-ignore
+            line: node.children[i].symbol.line,
+            source
+          }));
+        } else {
+          current.children.push(convertToObject(node.children[i], parser, source));
+        }
+      }
+      return current;
+    }
+  } else if (ruleIndex === FormulaParser.RULE_assigned) {
+    /**
+     * assigned 
+	   * : IDENT selector? -> ^(ASSIGNED IDENT selector?)
+	   * ;
+     */
+    let current = new TreeNode("", "ASSIGNED", {
+      line: node.start.line,
+      source
+    });
+    current.children = [
+      new TreeNode(getNodeText(node.children[0]), "IDENT", {
+        line: node.start.line,
+        source
+      })
+    ];
+    for (let i = 1; i < node.children.length; i++) {
+      current.children.push(convertToObject(node.children[i], parser, source));
+    }
+    return current;
+    
+  } else if (ruleIndex === FormulaParser.RULE_string) {
+    let current = new TreeNode(getNodeText(node), "STRING", {
+      line: node.start.line,
+      source
+    });
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_innerPrimaryExpression) {
+    let current = new TreeNode("", "INNER", {
+      line: node.start.line,
+      source
+    });
+    if (node.children[0] instanceof FormulaParser.SelectionExpressionContext) {
+      let selectionExpression = /** @type {any} */ (node.children[0]);
+      current.children.push(convertToObject(selectionExpression.children[0], parser, source));
+      for (let i = 1; i < selectionExpression.children.length; i++) {
+        current.children.push(convertToObject(selectionExpression.children[i], parser, source));
+      }
+    } else {
+      for (let i = 0; i < node.children.length; i++) {
+        current.children.push(convertToObject(node.children[i], parser, source));
+      }
+    }
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_primaryExpression) {
+    if (getNodeText(node.children[0]) === "(") {
+      return convertToObject(node.children[1], parser, source);
+    }
+    return convertToObject(node.children[0], parser, source);
+  } else if (ruleIndex === FormulaParser.RULE_selector) {
+    /**
+     * 
+     * selector
+	   * : (minarray | dotselector) -> ^(SELECTOR minarray? dotselector?)
+	   *;
+     */
+    let current = new TreeNode("", "SELECTOR", {
+      line: node.start.line,
+      source
+    });
+    if (node.children[0] instanceof FormulaParser.MinarrayContext) {
+      let minArray = /** @type {any} */ (node.children[0]);
+      for (let i = 1; i < minArray.children.length - 1; i++) {
+        if (getNodeText(minArray.children[i]) === ",") {
+          continue;
+        }
+        // support MULT
+        if (getNodeText(minArray.children[i]) === "*") {
+          current.children.push(new TreeNode(getNodeText(minArray.children[i]), "MULT", {
+            line: minArray.children[i].symbol.line,
+            source
+          }));
+          continue;
+        }
+
+        current.children.push(convertToObject(minArray.children[i], parser, source));
+      }
+    } else {
+      current.children = [convertToObject(node.children[0], parser, source)];
+    }
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_dotselector) {
+    /**
+     * dotselector
+	   * ('.' arrayName)+ -> ^(DOTSELECTOR arrayName+)
+	   * ;
+     */
+    let current = new TreeNode("", "DOTSELECTOR", {
+      line: node.start.line,
+      source
+    });
+    for (let i = 0; i < node.children.length; i++) {
+      if (getNodeText(node.children[i]) === ".") {
+        continue;
+      }
+      current.children.push(convertToObject(node.children[i], parser, source));
+    }
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_arrayName) {
+    // Handle: IDENT STRING or MULT
+    // @ts-ignore
+    let token = node.children[0];
+    // @ts-ignore
+    let symbol = token.symbol;
+
+    let newNode = null;
+    if (symbol.type === FormulaLexer.STRING) {
+      newNode = new TreeNode(token.getText(), "STRING", {
+        line: symbol.line,
+        source
+      });
+    } else if (symbol.type === FormulaLexer.IDENT) {
+      newNode = new TreeNode(token.getText(), "IDENT", {
+        line: symbol.line,
+        source
+      });
+    } else if (symbol.type === FormulaLexer.MULT) {
+      newNode = new TreeNode(token.getText(), "MULT", {
+        line: symbol.line,
+        source
+      });
+    } else {
+      console.error(symbol);
+      throw new Error("Invalid type - dotselector");
+    }
+
+    return newNode;
+  } else if (ruleIndex === FormulaParser.RULE_funCall) {
+    // ['(', a, ',', b, ',', c, ..., ')']
+    let current = new TreeNode("", "FUNCALL", {
+      line: node.start.line,
+      source
+    });
+    for (let i = 1; i < node.children.length - 1; i++) {
+      if (getNodeText(node.children[i]) === ",") {
+        continue;
+      }
+      current.children.push(convertToObject(node.children[i], parser, source));
+    }
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_material) {
+    // ['{', additive, unitMultiplicativeExpression, '}']
+    let current = new TreeNode(getNodeText(node), "MATERIAL", {
+      line: node.start.line,
+      source
+    });
+    current.children = [convertToObject(node.children[2], parser, source), convertToObject(node.children[1], parser, source)];
+    return current;
+  } else if (ruleIndex === FormulaParser.RULE_unitMultiplicativeExpression) {
+    /**
+     * unitMultiplicativeExpression 
+	   * :	unitInnerMultiplicativeExpression ( PER^ unitInnerMultiplicativeExpression ) *
+	   * ;
+     */
+    if (node.children.length > 1) {
+      // [left, ('per', right)*]
+      return flatChildrenToTreeLeft(node, (op) => {
+        return new TreeNode("", "PER", {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }, parser, source);
+    }
+
+  } else if (ruleIndex === FormulaParser.RULE_unitInnerMultiplicativeExpression) {
+    /**
+     * unitInnerMultiplicativeExpression 
+	   * :	unitClump ( (MULT|DIV)^ unitClump ) *
+     *	;
+     */
+    if (node.children.length > 1) {
+      // [left, '*'|'/', right]
+      return flatChildrenToTreeLeft(node, (op) => {
+        let operator = getNodeText(op);
+        return new TreeNode("", operator === "*" ? "MULT" : "DIV", {
+          // @ts-ignore
+          line: (op.start || op.symbol).line,
+          source
+        });
+      }, parser, source);
+    }
+  } else if (ruleIndex === FormulaParser.RULE_unitPowerExpression) {
+    /**
+     * unitPowerExpression 
+	   * :	 unit ( POW^ MINUS? (INTEGER|FLOAT) )* 
+	   * ;
+     */
+    if (node.children.length > 1) {
+      // [left, '^', '-' right]
+
+     
+      
+      let children = /** @type {any} */ (node.children.slice());
+      let isFirst = true;
+      while (children.length > 1) {
+        let left = children.shift();
+        let operator = children.shift();
+        let minus;
+        let right;
+        let minusOrRight = children.shift();
+        if (getNodeText(minusOrRight) === "-") {
+          minus = minusOrRight;
+          right = children.pop();
+        } else {
+          right = minusOrRight;
+        }
+        let current =  new TreeNode("", "POW", {
+          // @ts-ignore
+          line: (operator.start || operator.symbol).line,
+          source
+        });
+        current.children = [isFirst ? convertToObject(left, parser, source) : left, new TreeNode(getNodeText(right), "FLOAT", {
+          line: right.symbol.line,
+          source
+        })];
+        if (minus) {
+          current.children.splice(1, 0, new TreeNode("", "MINUS", {
+            // @ts-ignore
+            line: (minus.start || minus.symbol).line,
+            source
+          }));
+        }
+        children.push(current);
+        isFirst = false;
+      }
+      return children[0];
+  
+    }
+
+  } else if (ruleIndex === FormulaParser.RULE_unitClump) {
+    /**
+     * unitClump
+	   * :	(INTEGER DIV) unitPowerExpression CUBED? SQUARED? -> ^(UNITCLUMP unitPowerExpression NEGATE CUBED* SQUARED*)
+		| unitPowerExpression CUBED? SQUARED? -> ^(UNITCLUMP unitPowerExpression CUBED* SQUARED*)
+	   * ;
+     */
+    if (Number.isInteger(+getNodeText(node.children[0]))) {
+      let current = new TreeNode("", "UNITCLUMP", {
+        line: node.start.line,
+        source
+      });
+      current.children = [convertToObject(node.children[2], parser, source), new TreeNode("", "NEGATE", {
+        line: node.start.line,
+        source
+      })];
+      for (let i = 3; i < node.children.length; i++) {
+        if (getNodeText(node.children[i]).toLowerCase() === "cubed") {
+          current.children.push(new TreeNode("", "CUBED", {
+            line: node.start.line,
+            source
+          }));
+        } else if (getNodeText(node.children[i]).toLowerCase() === "squared") {
+          current.children.push(new TreeNode("", "SQUARED", {
+            line: node.start.line,
+            source
+          }));
+        }
+      }
+      return current;
+    } else {
+      let current = new TreeNode("", "UNITCLUMP", {
+        line: node.start.line,
+        source
+      });
+      current.children = [convertToObject(node.children[0], parser, source)];
+
+      for (let i = 1; i < node.children.length; i++) {
+        if (getNodeText(node.children[i]).toLowerCase() === "cubed") {
+          current.children.push(new TreeNode("", "CUBED", {
+            line: node.start.line,
+            source
+          }));
+        } else if (getNodeText(node.children[i]).toLowerCase() === "squared") {
+          current.children.push(new TreeNode("", "SQUARED", {
+            line: node.start.line,
+            source
+          }));
+        }
+
+      }
+      return current;
+    }
+
+  } else if (ruleIndex === FormulaParser.RULE_unit) {
+    /**
+     * unit	:	IDENT (IDENT)* -> ^(UNIT IDENT+)
+		 * | '(' unitMultiplicativeExpression ')'	-> ^(UNITCLUMP unitMultiplicativeExpression)
+     * ;
+     */
+    if (getNodeText(node.children[0]) === "(") {
+      let current = new TreeNode("", "UNITCLUMP", {
+        line: node.start.line,
+        source
+      });
+      current.children = [convertToObject(node.children[1], parser, source)];
+      return current;
+    } else {
+      let current = new TreeNode("", "UNIT", {
+        line: node.start.line,
+        source
+      });
+      for (let i = 0; i < node.children.length; i++) {
+        let token = node.children[i];
+        // @ts-ignore
+        let symbol = token.symbol;
+        current.children.push( new TreeNode(token.getText(), "IDENT", {
+          line: symbol.line,
+          source
+        }));
+      }
+      return current;
+    }
+    
+    
+
+  } else if (ruleIndex === FormulaParser.RULE_array) {
+    /**
+     * array
+	   * : 
+	   * LCURL NEWLINE* (label NEWLINE*(',' NEWLINE* label NEWLINE*)*)? NEWLINE* RCURL -> ^(ARRAY label*)
+	   * ;
+     */
+    // ['{' label (',', label)*, '}']
+    let current = new TreeNode("", "ARRAY", {
+      line: node.start.line,
+      source
+    });
+    for (let i = 1; i < node.children.length - 1; i++) {
+      if (getNodeText(node.children[i]) === "{" || getNodeText(node.children[i]) === "," || getNodeText(node.children[i]) === "\n" || getNodeText(node.children[i]) === "\r\n" || getNodeText(node.children[i]) === "}") {
+        continue;
+      }
+      if (node.children[i] instanceof FormulaParser.LabelContext) {
+        current.children.push(convertToObject(node.children[i], parser, source));
+      } else {
+        current.children.push(new TreeNode(getNodeText(node), "LABEL", {
+          line: node.start.line,
+          source
+        }, [convertToObject(node.children[i], parser, source)]));
+      }
+    }
+
+    return current;
+  }  else if (ruleIndex === FormulaParser.RULE_label) {
+    /**
+     * label	:	
+	   * (arrayName NEWLINE* COLON)? NEWLINE* logicalExpression -> ^(LABEL logicalExpression arrayName?)
+	   *;
+    */
+
+    let current = new TreeNode(getNodeText(node), "LABEL", {
+      line: node.start.line,
+      source
+    });
+    let children = node.children.slice();
+    // filter newlines
+    children = children.filter(child => getNodeText(child) !== "\n" && getNodeText(child) !== "\r\n");
+    if (children.length === 1) {
+      current.children = [convertToObject(children[0], parser, source)];
+    } else {
+      current.children = [convertToObject(children[2], parser, source), convertToObject(children[0], parser, source)];
+    }
+    return current;
   }
 
-  return current;
+  if (node.children.length === 1) {
+    return convertToObject(node.children[0], parser, source);
+  }
+
+  // shouldn't reach here
+  throw new ModelError("Unknown invalid equation syntax", {
+    code: 9002
+  });
 }
 
 
@@ -190,7 +1262,7 @@ let funcEvalMap = Object.create(null);
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["LINES"] = function (node, scope, simulate) {
@@ -212,7 +1284,7 @@ funcEvalMap["LINES"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["NEGATE"] = function (node, scope, simulate) {
@@ -257,7 +1329,7 @@ export function negate(x) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["AND"] = function (node, scope, simulate) {
@@ -276,7 +1348,7 @@ function funAnd(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["OR"] = function (node, scope, simulate) {
@@ -295,7 +1367,7 @@ function funOr(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["XOR"] = function (node, scope, simulate) {
@@ -314,7 +1386,7 @@ function funXor(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["NOT"] = function (node, scope, simulate) {
@@ -331,7 +1403,7 @@ export function fNot(x) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["NOTEQUALS"] = function (node, scope, simulate) {
@@ -363,35 +1435,34 @@ export function neq(lhs, rhs) {
     return lhs !== rhs;
   }
 
+  let scale = 1;
   if (lhs.units !== rhs.units) {
-    let scale = convertUnits(rhs.units, lhs.units);
+    scale = convertUnits(rhs.units, lhs.units);
     if (scale === 0) {
       return true;
-    } else {
-      rhs.value = fn["*"](rhs.value, scale);
-      rhs.units = lhs.units;
     }
   }
 
-  return !fn["="](lhs.value, rhs.value);
+  return !fn["="](lhs.value, scale === 1 ? rhs.value : fn["*"](rhs.value, scale));
 }
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["EQUALS"] = function (node, scope, simulate) {
-  return eq(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)));
+  return eq(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)), true);
 };
 
 
 /**
  * @param {ValueType|string|number} lhs
  * @param {ValueType|string|number} rhs
+ * @param {boolean=} allowVectorReturn 
  * @returns {boolean}
  */
-export function eq(lhs, rhs) {
+export function eq(lhs, rhs, allowVectorReturn=false) {
   if ((typeof lhs === "boolean" && !(rhs instanceof Vector)) || (typeof rhs === "boolean" && !(lhs instanceof Vector))) {
     return trueValue(lhs) === trueValue(rhs);
   }
@@ -400,28 +1471,35 @@ export function eq(lhs, rhs) {
   }
 
 
-  if (lhs instanceof Vector) {
-    return lhs.cloneCombine(rhs, eq, false);
-  } else if (rhs instanceof Vector) {
-    return rhs.cloneCombine(lhs, eq, true);
+  if (allowVectorReturn) {
+    if (lhs instanceof Vector) {
+      return lhs.cloneCombine(rhs, (a, b) => eq(a, b, true), false);
+    } else if (rhs instanceof Vector) {
+      return rhs.cloneCombine(lhs, (a, b) => eq(a, b, true), true);
+    }
+  } else {
+    if (lhs instanceof Vector || rhs instanceof Vector) {
+      if (lhs instanceof Vector && rhs instanceof Vector) {
+        return lhs.equals(rhs);
+      }
+      return false;
+    }
   }
 
   if (!(lhs instanceof Material) || !(rhs instanceof Material)) {
     return lhs === rhs;
   }
 
+  let scale = 1;
   if (lhs.units !== rhs.units) {
-    let scale = convertUnits(rhs.units, lhs.units);
+    scale = convertUnits(rhs.units, lhs.units);
     if (scale === 0) {
       return false;
-    } else {
-      rhs.value = fn["*"](rhs.value, scale);
-      rhs.units = lhs.units;
     }
   }
 
 
-  return fn["="](lhs.value, rhs.value);
+  return fn["="](lhs.value, scale === 1 ? rhs.value : fn["*"](rhs.value, scale));
 }
 
 function comparisonValid(lhs, rhs) {
@@ -444,7 +1522,7 @@ function comparisonValid(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["LT"] = function (node, scope, simulate) {
@@ -466,17 +1544,15 @@ export function lessThan(lhs, rhs) {
     return rhs.cloneCombine(lhs, lessThan, true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
 
+    let scale = 1;
     if (lhs.units !== rhs.units) {
-      let scale = convertUnits(rhs.units, lhs.units);
+      scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
         unitAlert(lhs.units, rhs.units, "comparison");
-      } else {
-        rhs.value = fn["*"](rhs.value, scale);
-        rhs.units = lhs.units;
       }
     }
 
-    return fn["<"](lhs.value, rhs.value);
+    return fn["<"](lhs.value, scale === 1 ? rhs.value : fn["*"](scale, rhs.value));
   }
 
   throw new ModelError("Invalid type - lessThan", {
@@ -486,7 +1562,7 @@ export function lessThan(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["LTEQ"] = function (node, scope, simulate) {
@@ -508,17 +1584,16 @@ export function lessThanEq(lhs, rhs) {
     return rhs.cloneCombine(lhs, lessThanEq, true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
 
+  
+    let scale = 1;
     if (lhs.units !== rhs.units) {
-      let scale = convertUnits(rhs.units, lhs.units);
+      scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
         unitAlert(lhs.units, rhs.units, "comparison");
-      } else {
-        rhs.value = fn["*"](rhs.value, scale);
-        rhs.units = lhs.units;
       }
     }
 
-    return fn["<="](lhs.value, rhs.value);
+    return fn["<="](lhs.value, scale === 1 ? rhs.value : fn["*"](scale, rhs.value));
   }
 
   throw new ModelError("Invalid type - lessThanEq", {
@@ -528,7 +1603,7 @@ export function lessThanEq(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["GT"] = function (node, scope, simulate) {
@@ -549,17 +1624,15 @@ export function greaterThan(lhs, rhs) {
     return rhs.cloneCombine(lhs, greaterThan, true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
 
+    let scale = 1;
     if (lhs.units !== rhs.units) {
-      let scale = convertUnits(rhs.units, lhs.units);
+      scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
         unitAlert(lhs.units, rhs.units, "comparison");
-      } else {
-        rhs.value = fn["*"](rhs.value, scale);
-        rhs.units = lhs.units;
       }
     }
 
-    return fn[">"](lhs.value, rhs.value);
+    return fn[">"](lhs.value, scale === 1 ? rhs.value : fn["*"](scale, rhs.value));
   }
 
   throw new ModelError("Invalid type - greaterThan", {
@@ -569,7 +1642,7 @@ export function greaterThan(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["GTEQ"] = function (node, scope, simulate) {
@@ -590,17 +1663,15 @@ export function greaterThanEq(lhs, rhs) {
     return rhs.cloneCombine(lhs, greaterThanEq, true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
 
+    let scale = 1;
     if (lhs.units !== rhs.units) {
-      let scale = convertUnits(rhs.units, lhs.units);
+      scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
         unitAlert(lhs.units, rhs.units, "comparison");
-      } else {
-        rhs.value = fn["*"](rhs.value, scale);
-        rhs.units = lhs.units;
       }
     }
 
-    return fn[">="](lhs.value, rhs.value);
+    return fn[">="](lhs.value, scale === 1 ? rhs.value : fn["*"](scale, rhs.value));
   }
 
   throw new ModelError("Invalid type - greaterThanEq", {
@@ -610,7 +1681,7 @@ export function greaterThanEq(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["PLUS"] = function (node, scope, simulate) {
@@ -634,17 +1705,22 @@ export function plus(lhs, rhs) {
     return rhs.cloneCombine(lhs, plus, true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
 
+    let explicitUnits = true;
+    let scale = 1;
     if (lhs.units !== rhs.units) {
-      let scale = convertUnits(rhs.units, lhs.units);
+      scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
         unitAlert(lhs.units, rhs.units, "addition");
-      } else {
-        rhs.value = fn["*"](rhs.value, scale);
-        rhs.units = lhs.units;
+      } else if (scale !== 1) {
+        explicitUnits = false;
       }
     }
 
-    return /** @type {any} */ (new Material(fn["+"](lhs.value, rhs.value), rhs.units));
+    return /** @type {any} */ (new Material(
+      fn["+"](lhs.value, scale === 1 ? rhs.value : fn["*"](rhs.value, scale)),
+      lhs.units,
+      explicitUnits && lhs.explicitUnits && rhs.explicitUnits 
+    ));
   }
 
 
@@ -670,7 +1746,7 @@ export function plus(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["MINUS"] = function (node, scope, simulate) {
@@ -695,18 +1771,23 @@ export function minus(lhs, rhs) {
     return rhs.cloneCombine(lhs, minus, true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
 
+    let explicitUnits = true;
+    let scale = 1;
     if (lhs.units !== rhs.units) {
-      let scale = convertUnits(rhs.units, lhs.units);
+      scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
         unitAlert(lhs.units, rhs.units, "subtraction");
-      } else {
-        rhs.value = fn["*"](rhs.value, scale);
-        rhs.units = lhs.units;
+      } else if (scale !== 1) {
+        explicitUnits = false;
       }
     }
 
 
-    return /** @type {any} */ (new Material(fn["-"](lhs.value, rhs.value), rhs.units));
+    return /** @type {any} */ (new Material(
+      fn["-"](lhs.value, scale === 1 ? rhs.value : fn["*"](rhs.value, scale)),
+      lhs.units,
+      explicitUnits && lhs.explicitUnits && rhs.explicitUnits 
+    ));
   }
 
 
@@ -734,7 +1815,7 @@ export function minus(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["MULT"] = function (node, scope, simulate) {
@@ -757,9 +1838,22 @@ export function mult(lhs, rhs) {
     return rhs.cloneCombine(lhs, mult, true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
     let x = fn["*"](lhs.value, rhs.value);
+
     if (lhs.units && rhs.units) {
-      lhs.units.addBase(); rhs.units.addBase();
-      return /** @type {any} */ (new Material(fn["*"](fn["*"](lhs.units.toBase, x), rhs.units.toBase), lhs.units.multiply(rhs.units, 1)));
+      let [scale, newUnits, explicit] = lhs.units.multiply(rhs.units, true);
+      if (scale === 1) {
+        return /** @type {any} */ (new Material(
+          x,
+          newUnits,
+          explicit && lhs.explicitUnits && rhs.explicitUnits 
+        ));
+      } else {
+        return /** @type {any} */ (new Material(
+          fn["*"](x, scale),
+          newUnits,
+          explicit && lhs.explicitUnits && rhs.explicitUnits 
+        ));
+      }
     } else if (lhs.units) {
       return /** @type {any} */ (new Material(x, lhs.units));
     } else if (rhs.units) {
@@ -793,7 +1887,7 @@ export function mult(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["DIV"] = function (node, scope, simulate) {
@@ -816,9 +1910,22 @@ export function div(lhs, rhs) {
     return rhs.cloneCombine(lhs, div, true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
     let x = fn["/"](lhs.value, rhs.value);
+
     if (lhs.units && rhs.units) {
-      lhs.units.addBase(); rhs.units.addBase();
-      return /** @type {any} */ (new Material(fn["/"](fn["*"](lhs.units.toBase, x), rhs.units.toBase), lhs.units.multiply(rhs.units, -1)));
+      let [scale, newUnits, explicit] = lhs.units.multiply(rhs.units, false);
+      if (scale === 1) {
+        return /** @type {any} */ (new Material(
+          x,
+          newUnits,
+          explicit && lhs.explicitUnits && rhs.explicitUnits 
+        ));
+      } else {
+        return /** @type {any} */ (new Material(
+          fn["*"](x, scale),
+          newUnits,
+          explicit && lhs.explicitUnits && rhs.explicitUnits 
+        ));
+      }
     } else if (lhs.units) {
       return /** @type {any} */ (new Material(x, lhs.units));
     } else if (rhs.units) {
@@ -852,7 +1959,7 @@ export function div(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["POWER"] = function (node, scope, simulate) {
@@ -926,7 +2033,7 @@ export function power(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["MOD"] = function (node, scope, simulate) {
@@ -982,15 +2089,15 @@ export function doMod(lhs, rhs) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["IDENT"] = function (node, scope, simulate) {
   let varName = node.text;
 
-  while (!(varName in scope)) {
-    if (scope["-parent"]) {
-      scope = scope["-parent"];
+  while (!scope.has(varName)) {
+    if (scope.get("-parent")) {
+      scope = scope.get("-parent");
     } else {
       throw new ModelError(`The variable or function "${node.origText}" does not exist.`, {
         code: 7038
@@ -998,7 +2105,7 @@ funcEvalMap["IDENT"] = function (node, scope, simulate) {
     }
   }
 
-  let v = scope[varName];
+  let v = scope.get(varName);
 
   if (v instanceof TreeNode && v.typeName === "ARRAY") {
     v = evaluateNode(v, scope, simulate);
@@ -1012,7 +2119,7 @@ funcEvalMap["IDENT"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["NEW"] = function (node, scope, simulate) {
@@ -1051,7 +2158,7 @@ funcEvalMap["NEW"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["INNER"] = function (node, scope, simulate) {
@@ -1064,8 +2171,8 @@ funcEvalMap["INNER"] = function (node, scope, simulate) {
   let lastSelf; // for "self" binding
   let lastBase; // for "self" binding
 
-  if (scope.self && node.children[0].text === "parent") {
-    lastSelf = scope.self;
+  if (scope.get("self") && node.children[0].text === "parent") {
+    lastSelf = scope.get("self");
   } else if (!(base instanceof Function || base instanceof UserFunction)) {
     lastSelf = base;
   }
@@ -1147,7 +2254,7 @@ let fingerprintCounter = 0;
  * @param {*} base
  * @param {any} node
  * @param {import("../Simulator").Simulator} simulate
- * @param {*} scope
+ * @param {Map} scope
  * @param {*} lastSelf
  * @param {*} lastBase
  * @returns
@@ -1193,18 +2300,18 @@ function callFunction(base, node, simulate, scope, lastSelf, lastBase) {
     fn = base; // built-in
   }
 
-  let oldLine = simulate.evaluatingLine;
+  let oldPosition = simulate.evaluatingPosition;
 
   let x = fn(vals, fingerprint, lastSelf, lastBase);
 
-  simulate.evaluatingLine = oldLine;
+  simulate.evaluatingPosition = oldPosition;
 
   return x;
 }
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {*} offset
  * @param {import("../Simulator").Simulator} simulate
  */
@@ -1248,7 +2355,7 @@ function createMatrixSelector(node, scope, offset, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["ARRAY"] = function (node, scope, simulate) {
@@ -1278,7 +2385,7 @@ funcEvalMap["ARRAY"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["RANGE"] = function (node, scope, simulate) {
@@ -1341,19 +2448,18 @@ funcEvalMap["RANGE"] = function (node, scope, simulate) {
  * @param {*} varNames
  * @param {*} varDefaults
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 function makeFunctionCall(varName, varNames, varDefaults, node, scope, simulate) {
 
   let fn = new UserFunction();
 
-  fn.localScope = {};
+  fn.localScope = Object.create(null);
   fn.localScope["nVars"] = varNames.length;
   for (let i = 0; i < varNames.length; i++) {
     fn.localScope[i + ""] = varNames[i];
   }
-  fn.localScope["-parent"] = scope;
   fn.defaults = varDefaults;
 
   fn.fn = function (x, fingerPrint, lastSelf, lastBase) {
@@ -1377,24 +2483,26 @@ function makeFunctionCall(varName, varNames, varDefaults, node, scope, simulate)
         code: 7049
       });
     }
-    let localScope = { "-parent": scope };
+    let localScope = new Map([
+      ["-parent", scope]
+    ]);
 
     for (let i = 0; i < x.length; i++) {
-      localScope[fn.localScope[i + ""]] = x[i];
+      localScope.set(fn.localScope[i + ""], x[i]);
     }
     for (let i = x.length; i < fn.localScope["nVars"]; i++) {
-      localScope[fn.localScope[i + ""]] = fn.defaults[fn.defaults.length - (fn.localScope["nVars"] - i)];
+      localScope.set(fn.localScope[i + ""], fn.defaults[fn.defaults.length - (fn.localScope["nVars"] - i)]);
     }
 
 
     if (lastSelf) {
-      if (!localScope.self) {
-        localScope["self"] = lastSelf;
+      if (!localScope.has("self")) {
+        localScope.set("self", lastSelf);
       }
     }
     if (lastBase) {
       if (lastBase.parent) {
-        localScope["parent"] = lastBase.parent;
+        localScope.set("parent", lastBase.parent);
       }
     }
 
@@ -1414,7 +2522,7 @@ function makeFunctionCall(varName, varNames, varDefaults, node, scope, simulate)
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["THROW"] = function (node, scope, simulate) {
@@ -1425,18 +2533,20 @@ funcEvalMap["THROW"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["TRYCATCH"] = function (node, scope, simulate) {
   try {
     return evaluateNode(node.children[0], scope, simulate);
   } catch (err) {
-    let localScope = { "-parent": scope };
+    
+    /** @type {Map} */
+    let localScope = new Map([[ "-parent", scope ]]);
     if (err instanceof ModelError) {
-      localScope[node.children[2].text] = stringify(err.message, simulate);
+      localScope.set(node.children[2].text, stringify(err.message, simulate));
     } else {
-      localScope[node.children[2].text] = stringify("An error has occurred.", simulate);
+      localScope.set(node.children[2].text, stringify("An error has occurred.", simulate));
     }
     return evaluateNode(node.children[1], localScope, simulate);
   }
@@ -1444,12 +2554,13 @@ funcEvalMap["TRYCATCH"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["WHILE"] = function (node, scope, simulate) {
   let lastResult = new Material(0);
-  let innerScope = { "-parent": scope };
+  
+  let innerScope = new Map([[ "-parent", scope ]]);
   while (trueValue(toNum(evaluateNode(node.children[0], scope, simulate)))) {
     lastResult = evaluateNode(node.children[1], innerScope, simulate);
   }
@@ -1458,11 +2569,12 @@ funcEvalMap["WHILE"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["IFTHENELSE"] = function (node, scope, simulate) {
-  let innerScope = { "-parent": scope };
+  
+  let innerScope = new Map([[ "-parent", scope ]]);
   let i;
   for (i = 0; i < node.children[0].children.length; i++) {
     if (trueValue(toNum(evaluateNode(node.children[0].children[i], scope, simulate)))) {
@@ -1478,14 +2590,15 @@ funcEvalMap["IFTHENELSE"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["FORIN"] = function (node, scope, simulate) {
   let lastResult = new Material(0);
   let id = node.children[0].text;
 
-  let innerScope = { "-parent": scope };
+  
+  let innerScope = new Map([[ "-parent", scope ]]);
   let vec = evaluateNode(node.children[1], scope, simulate);
   if (!(vec instanceof Vector)) {
     throw new ModelError("The in argument of a For-In loop must be a vector.", {
@@ -1493,7 +2606,7 @@ funcEvalMap["FORIN"] = function (node, scope, simulate) {
     });
   }
   for (let i = 0; i < vec.items.length; i++) {
-    innerScope[id] = vec.items[i];
+    innerScope.set(id, vec.items[i]);
     lastResult = evaluateNode(node.children[2], innerScope, simulate);
   }
   return lastResult;
@@ -1501,7 +2614,7 @@ funcEvalMap["FORIN"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["FOR"] = function (node, scope, simulate) {
@@ -1513,19 +2626,20 @@ funcEvalMap["FOR"] = function (node, scope, simulate) {
   if (node.children[1].children.length === 3) {
     by = toNum(evaluateNode(node.children[1].children[2], scope, simulate));
   }
-  let innerScope = { "-parent": scope };
+  /** @type {Map} */
+  let innerScope = new Map([[ "-parent", scope ]]);
 
-  innerScope[id] = start;
-  while (fn[by.value >= 0 ? "<=" : ">="](innerScope[id].value, toNum(evaluateNode(node.children[1].children[1], scope, simulate)))) {
+  innerScope.set(id, start);
+  while (fn[by.value >= 0 ? "<=" : ">="](innerScope.get(id).value, toNum(evaluateNode(node.children[1].children[1], scope, simulate)))) {
     lastResult = evaluateNode(node.children[2], innerScope, simulate);
-    innerScope[id] = plus(innerScope[id], by);
+    innerScope.set(id, plus(innerScope.get(id), by));
   }
   return lastResult;
 };
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["FUNCTION"] = function (node, scope, simulate) {
@@ -1538,7 +2652,7 @@ funcEvalMap["FUNCTION"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["ANONFUNCTION"] = function (node, scope, simulate) {
@@ -1547,7 +2661,7 @@ funcEvalMap["ANONFUNCTION"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["ASSIGN"] = function (node, scope, simulate) {
@@ -1573,13 +2687,13 @@ funcEvalMap["ASSIGN"] = function (node, scope, simulate) {
       }
 
       let origScope = scope;
-      while (scope["-parent"] !== null) {
-        if (scope[varName] !== undefined) {
+      while (scope.get("-parent") !== null) {
+        if (scope.get(varName) !== undefined) {
           break;
         }
-        scope = scope["-parent"];
+        scope = scope.get("-parent");
       }
-      if (scope["-parent"] === null && scope[varName] === undefined) {
+      if (scope.get("-parent") === null && scope.get(varName) === undefined) {
         scope = origScope;
       }
 
@@ -1590,10 +2704,10 @@ funcEvalMap["ASSIGN"] = function (node, scope, simulate) {
         v = x.items[i];
       }
       if (node.children[i].children.length === 1) {
-        scope[varName] = v;
+        scope.set(varName,  v);
       } else {
-        if (scope[varName] !== undefined) {
-          selectFromMatrix(scope[varName], simulate, selector, v);
+        if (scope.has(varName)) {
+          selectFromMatrix(scope.get(varName), simulate, selector, v);
         } else {
           throw new ModelError(`The variable '${node.children[i].children[0].origText}' does not exist.`, {
             code: 7052
@@ -1611,7 +2725,7 @@ funcEvalMap["ASSIGN"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 function createSelector(node, scope, simulate) {
@@ -1632,7 +2746,7 @@ function createSelector(node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["MATERIAL"] = function (node, scope, simulate) {
@@ -1650,7 +2764,7 @@ funcEvalMap["MATERIAL"] = function (node, scope, simulate) {
  * @param {TreeNode} paramNames
  * @param {*} paramDefaults
  * @param {*} code
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 function functionGenerator(varName, paramNames, paramDefaults, code, scope, simulate) {
@@ -1666,7 +2780,7 @@ function functionGenerator(varName, paramNames, paramDefaults, code, scope, simu
   if (varName === null) {
     return makeFunctionCall("Function", varNames, varDefaults, code, scope, simulate);
   } else {
-    scope[varName] = makeFunctionCall(varName, varNames, varDefaults, code, scope, simulate);
+    scope.set(varName, makeFunctionCall(varName, varNames, varDefaults, code, scope, simulate));
   }
 }
 
@@ -1763,12 +2877,12 @@ function evaluateUnits(node) {
 
 /**
  * @param {*} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 export function evaluateNode(node, scope, simulate) {
   if (node instanceof TreeNode) {
-    simulate.evaluatingLine = node.line || simulate.evaluatingLine;
+    simulate.evaluatingPosition = node.position || simulate.evaluatingPosition;
 
     return funcEvalMap[node.typeName](node, scope, simulate);
   } else if (node instanceof PrimitiveStore) {
@@ -1791,14 +2905,14 @@ let trimEvalMap = Object.create(null);
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["POWER"] = function (node, scope, simulate) {
   if (node.children.length === 1) {
     return trimNode(node.children[0], scope, simulate);
   } else {
-    let n = new TreeNode(node.origText, node.typeName, node.line);
+    let n = new TreeNode(node.origText, node.typeName, node.position);
     for (let i = 0; i < node.children.length; i++) {
       n.children.push(trimNode(node.children[i], scope, simulate));
     }
@@ -1808,14 +2922,14 @@ trimEvalMap["POWER"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["INNER"] = function (node, scope, simulate) {
   if (node.children.length === 1) {
     return trimNode(node.children[0], scope, simulate);
   } else {
-    let n = new TreeNode(node.origText, node.typeName, node.line);
+    let n = new TreeNode(node.origText, node.typeName, node.position);
     for (let i = 0; i < node.children.length; i++) {
       n.children.push(trimNode(node.children[i], scope, simulate));
     }
@@ -1832,7 +2946,7 @@ trimEvalMap["FALSE"] = function () {
 };
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["STRING"] = function (node, scope, simulate) {
@@ -1846,7 +2960,7 @@ trimEvalMap["STRING"] = function (node, scope, simulate) {
   // eslint-disable-next-line
   s = new String(s);
   // @ts-ignore
-  s.vector = new Vector([], simulate, [], simulate.varBank["stringbase"]);
+  s.vector = new Vector([], simulate, [], simulate.varBank.get("stringbase"));
   return s;
 };
 trimEvalMap["INTEGER"] = function (node) {
@@ -1855,7 +2969,7 @@ trimEvalMap["INTEGER"] = function (node) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["MATERIAL"] = function (node, scope, simulate) {
@@ -1879,7 +2993,7 @@ trimEvalMap["MATERIAL"] = function (node, scope, simulate) {
     }
     return new Material(x.value, simulate.unitManager.getUnitStore(names, exponents, true));
   } else {
-    let m = new TreeNode(node.origText, "MATERIAL", node.line);
+    let m = new TreeNode(node.origText, "MATERIAL", node.position);
     m.children = [x, simulate.unitManager.getUnitStore(names, exponents, true)];
     return m;
   }
@@ -1887,7 +3001,7 @@ trimEvalMap["MATERIAL"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["MULT"] = function (node, scope, simulate) {
@@ -1901,7 +3015,7 @@ trimEvalMap["MULT"] = function (node, scope, simulate) {
   if (isConst(lhs) && isConst(rhs)) {
     return mult(lhs, rhs);
   } else {
-    let n = new TreeNode(node.origText, node.typeName, node.line);
+    let n = new TreeNode(node.origText, node.typeName, node.position);
     n.children = [lhs, rhs];
     return n;
   }
@@ -1909,7 +3023,7 @@ trimEvalMap["MULT"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["DIV"] = function (node, scope, simulate) {
@@ -1918,7 +3032,7 @@ trimEvalMap["DIV"] = function (node, scope, simulate) {
   if (isConst(lhs) && isConst(rhs)) {
     return div(lhs, rhs);
   } else {
-    let n = new TreeNode(node.origText, node.typeName, node.line);
+    let n = new TreeNode(node.origText, node.typeName, node.position);
     n.children = [lhs, rhs];
     return n;
   }
@@ -1926,7 +3040,7 @@ trimEvalMap["DIV"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["PLUS"] = function (node, scope, simulate) {
@@ -1935,7 +3049,7 @@ trimEvalMap["PLUS"] = function (node, scope, simulate) {
   if (isConst(lhs) && isConst(rhs)) {
     return plus(lhs, rhs);
   } else {
-    let n = new TreeNode(node.origText, node.typeName, node.line);
+    let n = new TreeNode(node.origText, node.typeName, node.position);
     n.children = [lhs, rhs];
     return n;
   }
@@ -1944,7 +3058,7 @@ trimEvalMap["PLUS"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["MINUS"] = function (node, scope, simulate) {
@@ -1953,7 +3067,7 @@ trimEvalMap["MINUS"] = function (node, scope, simulate) {
   if (isConst(lhs) && isConst(rhs)) {
     return minus(lhs, rhs);
   } else {
-    let n = new TreeNode(node.origText, node.typeName, node.line);
+    let n = new TreeNode(node.origText, node.typeName, node.position);
     n.children = [lhs, rhs];
     return n;
   }
@@ -1963,14 +3077,14 @@ trimEvalMap["FLOAT"] = trimEvalMap["INTEGER"];
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  */
 trimEvalMap["PRIMITIVE"] = function (node, scope) {
   let res;
   if (node.text.substr(0, 2) === "[[") {
-    res = new PrimitiveStore(scope[node.text.substr(2, node.text.length - 4)], "totalValue");
+    res = new PrimitiveStore(scope.get(node.text.substr(2, node.text.length - 4)), "totalValue");
   } else {
-    res = new PrimitiveStore(scope[node.text.substr(1, node.text.length - 2)], "object");
+    res = new PrimitiveStore(scope.get(node.text.substr(1, node.text.length - 2)), "object");
   }
   if (res.primitive === undefined) {
     throw new ModelError(`The primitive <i>${toHTML(node.origText)}</i> could not be found.`, {
@@ -1982,18 +3096,18 @@ trimEvalMap["PRIMITIVE"] = function (node, scope) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["NEGATE"] = function (node, scope, simulate) {
   if (!node.children.length) {
-    return new TreeNode(node.origText, node.typeName, node.line);
+    return new TreeNode(node.origText, node.typeName, node.position);
   }
   let x = trimNode(node.children[0], scope, simulate);
   if (isConst(x)) {
     return negate(x);
   } else {
-    let n = new TreeNode(node.origText, node.typeName, node.line);
+    let n = new TreeNode(node.origText, node.typeName, node.position);
     n.children = [x];
     return n;
   }
@@ -2001,11 +3115,11 @@ trimEvalMap["NEGATE"] = function (node, scope, simulate) {
 
 /**
  * @param {TreeNode} node
- * @param {*} scope
+ * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["ARRAY"] = function (node, scope, simulate) {
-  let n = new TreeNode(node.origText, node.typeName, node.line);
+  let n = new TreeNode(node.origText, node.typeName, node.position);
   let vals = [];
   let names = [];
   let hasName = false;
@@ -2047,15 +3161,15 @@ function isConst(x) {
 
 /**
  * @param {TreeNode} node
- * @param {*} primitives
+ * @param {Map} primitives
  * @param {import("../Simulator").Simulator} simulate
  */
 function trimNode(node, primitives, simulate) {
   if (node.typeName in trimEvalMap) {
-    simulate.evaluatingLine = node.line || simulate.evaluatingLine;
+    simulate.evaluatingPosition = node.position || simulate.evaluatingPosition;
     return trimEvalMap[node.typeName](node, primitives, simulate);
   } else {
-    let n = new TreeNode(node.origText, node.typeName, node.line);
+    let n = new TreeNode(node.origText, node.typeName, node.position);
     for (let i = 0; i < node.children.length; i++) {
       n.children.push(trimNode(node.children[i], primitives, simulate));
     }

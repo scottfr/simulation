@@ -7,12 +7,15 @@ export class Material {
   /**
    * @param {number} value
    * @param {import("./Units").UnitStore=} units
+   * @param {boolean=} explicitUnits
    */
-  constructor(value, units) {
+  constructor(value, units, explicitUnits=true) {
     /** @type {number} */
     this.value = value;
     /** @type {import("./Units").UnitStore} */
     this.units = units;
+    /** @type {boolean} */
+    this.explicitUnits = explicitUnits;
   }
 
   /**
@@ -31,7 +34,7 @@ export class Material {
   }
 
   fullClone() {
-    return new Material(this.value, this.units);
+    return new Material(this.value, this.units, this.explicitUnits);
   }
 
   /**

@@ -1,4 +1,4 @@
-import { div, plus, mult, minus, eq, lessThan, toNum } from "./formula/Formula.js";
+import { div, plus, minus, eq, lessThan, toNum } from "./formula/Formula.js";
 import { TaskQueue, Task } from "./TaskScheduler.js";
 import { checkErr, cleanData, formatSimResults, simpleEquation, updateDisplayed } from "./Modeler.js";
 import { Material } from "./formula/Material.js";
@@ -40,7 +40,6 @@ import Big from "../vendor/bigjs/big.js";
  * @property {string=} error
  * @property {import("./api/Blocks").Primitive=} errorPrimitive
  * @property {number=} errorCode
- * @property {number[]=} times
  * @property {function=} value
  * @property {function=} lastValue
  * @property {number=} periods
@@ -126,11 +125,8 @@ export class Simulator {
     /** @type {import("./formula/Rand").RandList[]} */
     this.previousRandLists = [];
 
-    /** @type {SPrimitive[]} */
-    this.valuedPrimitives = [];
-
-    /** @type {Object<number, number>} */
-    this.unitsToBases = {};
+    /** @type {Set<SPrimitive>} */
+    this.valuedPrimitives = new Set();
 
     /** @type {Object<string, Material>} */
     this.distanceCache = {};
@@ -144,6 +140,8 @@ export class Simulator {
     /** @type {Object<string, number>} */
     this.ids = {};
 
+    this.timeToStateMapping = new Map();
+
     this.idCount = 0;
 
     this.stochastic = false;
@@ -152,7 +150,7 @@ export class Simulator {
     /** @type {Object<string, Object<string, import("./Primitives").Placeholder>>}*/
     this.allPlaceholders = {};
 
-    /** @ype {number} */
+    /** @type {number} */
     this.RKOrder = undefined;
 
     /** @type {import("./Modeler").SimulationConfigType=} */
@@ -161,11 +159,11 @@ export class Simulator {
     /** @type {ResultsType} */
     this.results = undefined;
 
-    /** @type {number} */
-    this.evaluatingLine = null;
+    /** @type {{ line: number, source: string }} */
+    this.evaluatingPosition = null;
 
-    /** @type {Object<string, any>} */
-    this.varBank = Object.create(null);
+    /** @type {Map<string, any>} */
+    this.varBank = new Map();
 
     this.unitManager = new UnitManager();
 
@@ -349,7 +347,7 @@ export class Simulator {
         priority: 1,
         action: (_task) => {
           if (this.valueChange) {
-            me.valuedPrimitives = [];
+            me.valuedPrimitives = new Set();
             for (let s in this.simulationModel.solvers) {
               let solver = this.simulationModel.solvers[s];
               for (let i = 0; i < solver.valued.length; i++) {
@@ -417,7 +415,7 @@ export class Simulator {
 
               res.resume = this.resume.bind(this);
               res.setValue = (cell, value) => {
-                let val = simpleEquation("" + value, this, { "-parent": this.varBank });
+                let val = simpleEquation("" + value, this, new Map([["-parent", this.varBank]]));
 
                 this.valuedPrimitives.forEach((x) => {
                   if (x.id === cell.id) {
@@ -476,24 +474,26 @@ export class Simulator {
    * @param {SPrimitive[]} displayed
    */
   printStates(displayed) {
-    let t = parseFloat(this.time().value.toPrecision(20));
+    if (!this.timeToStateMapping.has(this.tasks.time.value)) {
+      let t = parseFloat(this.tasks.time.value.toPrecision(20));
 
-    if (!this.results.times.includes(t)) {
+      let newData = {};
       let i;
       for (i = this.results.times.length; i > 0; i--) {
         if (this.results.times[i - 1] < t) {
           this.results.times.splice(i, 0, t);
-          this.results.data.splice(i, 0, {});
+          this.results.data.splice(i, 0, newData);
           break;
         }
       }
       if (i === 0) {
         this.results.times.splice(0, 0, t);
-        this.results.data.splice(0, 0, {});
+        this.results.data.splice(0, 0, newData);
       }
+      this.timeToStateMapping.set(this.tasks.time.value, newData);
     }
 
-    let data = this.results.data[this.results.times.indexOf(t)];
+    let data = this.timeToStateMapping.get(this.tasks.time.value);
 
     for (let i = 0; i < displayed.length; i++) {
       let v = displayed[i];
@@ -531,34 +531,6 @@ export class Simulator {
 
   /**
    * @param {SPrimitive} v
-   * @param {import("./formula/Units").UnitStore} u
-   * @param {boolean} flow
-   *
-   * @returns
-   */
-  unitsToBase(v, u, flow) {
-    let i = v.id + "-" + (u ? u.id : "");
-
-    if (i in this.unitsToBases) {
-      return this.unitsToBases[i];
-    }
-
-    let x = 1;
-    if (flow) {
-      x = this.timeUnits.toBase;
-    }
-
-    let toBase = 1;
-    if (u) {
-      u.addBase();
-      toBase = u.toBase;
-    }
-    this.unitsToBases[i] = fn["/"](fn["/"](toBase, v.dna.toBase), x);
-    return this.unitsToBases[i];
-  }
-
-  /**
-   * @param {SPrimitive} v
    * @param {Material} x
    *
    * @return {number}
@@ -573,11 +545,8 @@ export class Simulator {
         });
     }
 
-    if ((v instanceof SFlow) && (!v.dna.flowUnitless)) {
-      x = mult(x, new Material(1, this.timeUnits));
-    }
 
-    if ((v instanceof SState) || ((!x.units) && (!(v instanceof SFlow)))) {
+    if ((v instanceof SState) || ((!x.units) && !(v instanceof SFlow))) {
       if (typeof x === "object" && "value" in x) {
         return +x.value;
       }
@@ -585,7 +554,11 @@ export class Simulator {
       // @ts-ignore
       return x;
     } else {
-      return +fn["*"](x.value, this.unitsToBase(v, x.units, v instanceof SFlow));
+      let m = v.matchPrimitiveUnits(x.units);
+      if (m === 1) {
+        return x.value;
+      }
+      return +fn["*"](x.value, m);
     }
   }
 
@@ -633,7 +606,7 @@ export class Simulator {
         priority: 0,
         name: "RK1 Solver - " + solver.id,
         action: (_task) => {
-          me.valuedPrimitives = [];
+          me.valuedPrimitives = new Set();
           if (clear) {
             let l = flows.length;
             for (let i = 0; i < l; i++) {
@@ -706,7 +679,7 @@ export class Simulator {
             flows[i].clean();
           }
 
-          me.valuedPrimitives = [];
+          me.valuedPrimitives = new Set();
 
           l = valued.length;
           for (let i = 0; i < l; i++) {
@@ -728,7 +701,7 @@ export class Simulator {
         blocker: id + " start",
         action: (task) => {
           if (solver.RKPosition > 1) {
-            me.valuedPrimitives = [];
+            me.valuedPrimitives = new Set();
             let l = valued.length;
             for (let i = 0; i < l; i++) {
               valued[i].clearCached();
@@ -799,7 +772,7 @@ export class Simulator {
         expires: 2,
         blocker: id + " mid",
         action: (task) => {
-          me.valuedPrimitives = [];
+          me.valuedPrimitives = new Set();
           let l = valued.length;
           for (let i = 0; i < l; i++) {
             if (!(valued[i] instanceof SState)) {
@@ -834,7 +807,7 @@ export class Simulator {
         priority: -30,
         expires: 1,
         action: (task) => {
-          me.valuedPrimitives = [];
+          me.valuedPrimitives = new Set();
           let l = valued.length;
           for (let i = 0; i < l; i++) {
             if (!(valued[i] instanceof SState)) {

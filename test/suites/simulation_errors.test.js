@@ -252,6 +252,77 @@ test("Function calling method and errors", () => {
 });
 
 
+
+test("Vector type matching", () => {
+  let m = new Model();
+  let x = m.Variable({
+    name: "x",
+    value: "{1, 2}"
+  });
+
+  let y = m.Variable({
+    name: "y",
+    value: "Delay([x], {a: 2, b: 3})"
+  });
+
+  m.Link(x, y);
+
+  expect(() => m.simulate()).toThrow(/Vector keys do not match between/);
+
+  y.value = "Delay([x], {a:1, b:2}, {1, 1})";
+  expect(() => m.simulate()).toThrow(/Vector keys do not match between/);
+});
+
+
+test("Function calling evaluated paramters and checks types", () => {
+  let m = new Model();
+  let v = m.Variable({
+    name: "x",
+    value: "years()"
+  });
+
+  let vD = m.Variable({
+    name: "delay",
+    value: "10"
+  });
+
+
+  let vP = m.Variable({
+    name: "parameter",
+    value: "pastMean([x], [delay])"
+  });
+
+  m.Link(vD, vP);
+  m.Link(v, vP);
+
+  m.simulate(); // no error
+
+  // error with string
+  vD.value = "\"foo\"";
+  expect(() => m.simulate()).toThrow(/does not accept string values/);
+
+
+  // success with function
+  vP.value = `
+function df()
+  return 10
+end function
+pastMean([x], df)
+`;
+  m.simulate(); // no error
+
+
+  // error with function
+  vP.value = `
+function df()
+  return "foo"
+end function
+pastMean([x], df)
+`;
+  expect(() => m.simulate()).toThrow(/does not accept string values/);
+});
+
+
 test("Cannot use state functions outside primitive", () => {
   let m  = new Model();
   m.Variable({
@@ -299,6 +370,26 @@ test("Smooth errors attributed correctly", () => {
   }
 });
 
+
+test("Invalid name", () => {
+  let m = new Model();
+  let x = m.Variable({
+    name: "[[f] [z]]",
+    value: "1"
+  });
+
+  let y = m.Variable({
+    name: "y",
+    value: "[[f] [z]]"
+  });
+
+  m.Link(x, y);
+
+  expect(() => m.simulate()).toThrow(/Invalid equation syntax/);
+
+  y.value = "[]";
+  expect(() => m.simulate()).toThrow(/Invalid equation syntax/);
+});
 
 test("Smooth errors due to wrong number of parameters", () => {
   let m = new Model();

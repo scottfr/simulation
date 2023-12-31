@@ -9,6 +9,7 @@ import { Vector } from "./Vector.js";
 import { ModelError } from "./ModelError.js";
 import { jStat } from "../../vendor/jstat/jstat.js";
 import { SeedRandom } from "../../vendor/random.js";
+import { createUnitStore } from "../Modeler.js";
 
 
 /**
@@ -41,7 +42,7 @@ export function createFunctions(simulate) {
     return new Material(RandDist(simulate, xVals, yVals));
   });
 
-  defineFunction(simulate, "RandBoolean", { params: [{ name: "Probability", defaultVal: 0.5, noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "RandBoolean", { params: [{ name: "Probability", defaultVal: 0.5, noUnits: true, vectorize: true }] }, (x) => {
     let p;
     if (x.length !== 0) {
       p = toNum(x[0]).value;
@@ -55,7 +56,7 @@ export function createFunctions(simulate) {
       return false;
     }
   });
-  defineFunction(simulate, "Rand", { params: [{ name: "Lower Bound", defaultVal: 0, noUnits: true, noVector: true }, { name: "Upper Bound", defaultVal: 1, noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "Rand", { params: [{ name: "Lower Bound", defaultVal: 0, noUnits: true, vectorize: true }, { name: "Upper Bound", defaultVal: 1, noUnits: true, vectorize: true }] }, (x) => {
     if (x.length === 0) {
       return new Material(Rand(simulate));
     } else if (x.length === 2) {
@@ -66,7 +67,7 @@ export function createFunctions(simulate) {
       });
     }
   });
-  defineFunction(simulate, "RandNormal", { params: [{ name: "Mean", defaultVal: 0, noUnits: true, noVector: true }, { name: "Standard Deviation", defaultVal: 1, noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "RandNormal", { params: [{ name: "Mean", defaultVal: 0, noUnits: true, vectorize: true }, { name: "Standard Deviation", defaultVal: 1, noUnits: true, vectorize: true }] }, (x) => {
     if (x.length === 0) {
       return new Material(RandNormal(simulate));
     } else if (x.length === 2) {
@@ -77,35 +78,35 @@ export function createFunctions(simulate) {
       });
     }
   });
-  defineFunction(simulate, "RandExp", { params: [{ name: "Rate", defaultVal: 1, noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "RandExp", { params: [{ name: "Rate", defaultVal: 1, noUnits: true, vectorize: true }] }, (x) => {
     if (x.length !== 0) {
       return new Material(RandExp(simulate, toNum(x[0]).value));
     } else {
       return new Material(RandExp(simulate));
     }
   });
-  defineFunction(simulate, "RandLognormal", { params: [{ name: "Mean", noUnits: true, noVector: true }, { name: "Standard Deviation", noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "RandLognormal", { params: [{ name: "Mean", noUnits: true, vectorize: true }, { name: "Standard Deviation", noUnits: true, vectorize: true }] }, (x) => {
     return new Material(RandLognormal(simulate, toNum(x[0]).value, toNum(x[1]).value));
   });
-  defineFunction(simulate, "RandBinomial", { params: [{ name: "Count", noUnits: true, noVector: true }, { name: "Probability", noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "RandBinomial", { params: [{ name: "Count", noUnits: true, vectorize: true }, { name: "Probability", noUnits: true, vectorize: true }] }, (x) => {
     return new Material(RandBinomial(simulate, toNum(x[0]).value, toNum(x[1]).value));
   });
-  defineFunction(simulate, "RandNegativeBinomial", { params: [{ name: "Successes", noUnits: true, noVector: true }, { name: "Probability", noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "RandNegativeBinomial", { params: [{ name: "Successes", noUnits: true, vectorize: true }, { name: "Probability", noUnits: true, vectorize: true }] }, (x) => {
     return new Material(RandNegativeBinomial(simulate, toNum(x[0]).value, toNum(x[1]).value));
   });
-  defineFunction(simulate, "RandGamma", { params: [{ name: "Alpha", noUnits: true, noVector: true }, { name: "Beta", noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "RandGamma", { params: [{ name: "Alpha", noUnits: true, vectorize: true }, { name: "Beta", noUnits: true, vectorize: true }] }, (x) => {
     return new Material(RandGamma(simulate, toNum(x[0]).value, toNum(x[1]).value));
   });
-  defineFunction(simulate, "RandPoisson", { params: [{ name: "Rate", noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "RandPoisson", { params: [{ name: "Rate", noUnits: true, vectorize: true }] }, (x) => {
     return new Material(RandPoisson(simulate, toNum(x[0]).value));
   });
-  defineFunction(simulate, "RandTriangular", { params: [{ name: "Minimum", noUnits: true, noVector: true }, { name: "Maximum", noUnits: true, noVector: true }, { name: "Peak", noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "RandTriangular", { params: [{ name: "Minimum", noUnits: true, vectorize: true }, { name: "Maximum", noUnits: true, vectorize: true }, { name: "Peak", noUnits: true, vectorize: true }] }, (x) => {
     return new Material(RandTriangular(simulate, toNum(x[0]).value, toNum(x[1]).value, toNum(x[2]).value));
   });
 
   defineFunction(simulate, "Magnitude", { params: [{ name: "Number" }] }, (x) => {
     if (toNum(x[0]) instanceof Vector) {
-      return simulate.varBank["sqrt"]([simulate.varBank["sum"]([mult(x[0], x[0])])]);
+      return simulate.varBank.get("sqrt")([simulate.varBank.get("sum")([mult(x[0], x[0])])]);
     }
     let r = toNum(x[0]);
     r.value = fn.magnitude(r.value);
@@ -172,13 +173,13 @@ export function createFunctions(simulate) {
   });
 
   defineFunction(simulate, "arcsin", { params: [{ name: "Number", noUnits: true }], recurse: true, leafNeedNum: true }, (x) => {
-    return new Material(fn.asin(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]));
+    return new Material(fn.asin(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]), false);
   });
   defineFunction(simulate, "arccos", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
-    return new Material(fn.acos(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]));
+    return new Material(fn.acos(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]), false);
   });
   defineFunction(simulate, "arctan", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
-    return new Material(fn.atan(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]));
+    return new Material(fn.atan(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]), false);
   });
 
   defineFunction(simulate, "Sign", { params: [{ name: "Number", leafNeedNum: true }], recurse: true }, (x) => {
@@ -235,18 +236,64 @@ export function createFunctions(simulate) {
     r.value = fn["/"](1, fn["+"](1, fn.exp(fn["-"](r.value))));
     return r;
   });
-  defineFunction(simulate, "Round", { params: [{ name: "Number", noUnits: false, leafNeedNum: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "Round", { params: [
+    { name: "Number", noUnits: false, leafNeedNum: true },
+    { name: "Units", needString: true, defaultVal: "<DETECTED>" }
+  ], recurse: true }, (x) => {
+    /** @type {Material} */
     let r = toNum(x[0]);
+
+    if (!x[1]) {
+      if (r.units && !r.explicitUnits && !r.units.isDeepUnitless()) {
+        throw new ModelError("Round() requires either no units or units that have been explicitly set. Got: " + r.units.toString() + ". If those units are correct, try <b>round(number, \"" + r.units.toStringShort() + "\")", {
+          code: 6463
+        });
+      }
+    } else {
+      r = r.forceUnits(createUnitStore(x[1], simulate));
+    }
+
+
     r.value = fn.round(r.value);
     return r;
   });
-  defineFunction(simulate, "Ceiling", { params: [{ name: "Number", noUnits: false, leafNeedNum: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "Ceiling", { params: [
+    { name: "Number", noUnits: false, leafNeedNum: true },
+    { name: "Units", needString: true, defaultVal: "<DETECTED>" }
+  ], recurse: true }, (x) => {
+    /** @type {Material} */
     let r = toNum(x[0]);
+
+    if (!x[1]) {
+      if (r.units && !r.explicitUnits && !r.units.isDeepUnitless()) {
+        throw new ModelError("Ceiling() requires either no units or units that have been explicitly set. Current units are " + r.units.toString() + ". If those units are correct, try <b>ceiling(number, \"" + r.units.toStringShort() + "\")", {
+          code: 6464
+        });
+      }
+    } else {
+      r = r.forceUnits(createUnitStore(x[1], simulate));
+    }
+
     r.value = fn.ceiling(r.value);
     return r;
   });
-  defineFunction(simulate, "Floor", { params: [{ name: "Number", noUnits: false, leafNeedNum: true }], recurse: true }, (x) => {
+  defineFunction(simulate, "Floor", { params: [
+    { name: "Number", noUnits: false, leafNeedNum: true },
+    { name: "Units", needString: true, defaultVal: "<DETECTED>" }
+  ], recurse: true }, (x) => {
+    /** @type {Material} */
     let r = toNum(x[0]);
+
+    if (!x[1]) {
+      if (r.units && !r.explicitUnits && !r.units.isDeepUnitless()) {
+        throw new ModelError("Floor() requires either no units or units that have been explicitly set. Got: " + r.units.toString() + ". If those units are correct, try <b>floor(number, \"" + r.units.toStringShort() + "\")", {
+          code: 6462
+        });
+      }
+    } else {
+      r = r.forceUnits(createUnitStore(x[1], simulate));
+    }
+
     r.value = fn.floor(r.value);
     return r;
   });
@@ -254,7 +301,7 @@ export function createFunctions(simulate) {
     return new Material(fn.exp(toNum(x[0]).value));
   });
 
-  simulate.varBank["ifthenelse"] = function (x) {
+  simulate.varBank.set("ifthenelse", function (x) {
     testArgumentsSize(x, "IfThenElse", 3, 3);
 
     let v = toNum(evaluateNode(x[0].node, x[0].scope, simulate));
@@ -268,11 +315,11 @@ export function createFunctions(simulate) {
     } else {
       return evaluateNode(x[2].node, x[2].scope, simulate);
     }
-  };
-  simulate.varBank["ifthenelse"].delayEvalParams = true;
+  });
+  simulate.varBank.get("ifthenelse").delayEvalParams = true;
 
 
-  simulate.varBank["assert"] = function (x) {
+  simulate.varBank.set("assert", function (x) {
     testArgumentsSize(x, "Assert", 1, 2);
 
     let v = evaluateNode(x[0].node, x[0].scope, simulate);
@@ -284,8 +331,8 @@ export function createFunctions(simulate) {
     } else {
       return new Material(1);
     }
-  };
-  simulate.varBank["assert"].delayEvalParams = true;
+  });
+  simulate.varBank.get("assert").delayEvalParams = true;
 
   function vecIfThenElse(test, tVal, fVal) {
 
@@ -326,7 +373,7 @@ export function createFunctions(simulate) {
   }
 
 
-  simulate.varBank["map"] = function (x) {
+  simulate.varBank.set("map", function (x) {
     testArgumentsSize(x, "Map", 2, 2);
     let v;
     if (x[0].node instanceof Vector) {
@@ -348,7 +395,10 @@ export function createFunctions(simulate) {
     v = v.fullClone();
 
     let fn;
-    let scope = { x: null, "-parent": x[1].scope };
+    let scope = new Map([
+      ["x", null], 
+      ["-parent", x[1].scope]
+    ]);
     let node = x[1].node;
     try {
       fn = evaluateNode(node, scope, simulate);
@@ -366,16 +416,16 @@ export function createFunctions(simulate) {
       };
     } else {
       f = function (input, key) {
-        scope.x = input;
-        scope.key = key || "";
+        scope.set("x", input);
+        scope.set("key", key || "");
         return evaluateNode(node, scope, simulate);
       };
     }
 
     return v.apply(f);
-  };
-  simulate.varBank["map"].delayEvalParams = true;
-  VectorObject["map"] = simulate.varBank["map"];
+  });
+  simulate.varBank.get("map").delayEvalParams = true;
+  VectorObject["map"] = simulate.varBank.get("map");
 
   defineFunction(simulate, "Sample", { object: [simulate.varBank, VectorObject], params: [{ name: "Vector", needVector: true }, { name: "Sample Size" }, { name: "Repeat", noVector: true, allowBoolean: true, defaultVal: false }] }, (x) => {
     let v = toNum(x[0]);
@@ -428,9 +478,14 @@ export function createFunctions(simulate) {
     }
   });
 
-  defineFunction(simulate, "Contains", { object: [simulate.varBank, VectorObject], params: [{ name: "Haystack", needVector: true, noUnits: true }, { name: "Needle", allowBoolean: true, noVector: true, allowString: true }] }, (x) => {
-
-    if (eq(new Material(0), simulate.varBank["indexof"](x))) {
+  defineFunction(simulate, "Contains", { object: [simulate.varBank, VectorObject], params: [
+    { name: "Haystack", needVector: true, noUnits: true },
+    { name: "Needle", allowBoolean: true, noVector: true, allowString: true }
+  ] }, (x) => {
+    if (eq(
+      new Material(0),
+      simulate.varBank.get("indexof")([new Vector(flatten(x[0]).items, simulate), x[1]])
+    )) {
       return false;
     } else {
       return true;
@@ -450,7 +505,7 @@ export function createFunctions(simulate) {
     return new Material(0);
   }
 
-  simulate.varBank["filter"] = function (x) {
+  simulate.varBank.set("filter", function (x) {
     testArgumentsSize(x, "Filter", 2, 2);
 
     let v;
@@ -472,13 +527,13 @@ export function createFunctions(simulate) {
     }
     v = v.fullClone();
 
-    let t = simulate.varBank["map"](x);
-    return simulate.varBank["select"]([v, t]);
-  };
-  simulate.varBank["filter"].delayEvalParams = true;
-  VectorObject["filter"] = simulate.varBank["filter"];
+    let t = simulate.varBank.get("map")(x);
+    return simulate.varBank.get("select")([v, t]);
+  });
+  simulate.varBank.get("filter").delayEvalParams = true;
+  VectorObject["filter"] = simulate.varBank.get("filter");
 
-  simulate.varBank["join"] = function (x) {
+  simulate.varBank.set("join", function (x) {
     let res = [];
     let names = [];
     let hasNames = false;
@@ -505,9 +560,9 @@ export function createFunctions(simulate) {
       }
     }
     return new Vector(res, simulate, hasNames ? names : undefined);
-  };
+  });
 
-  simulate.varBank["repeat"] = function (x) {
+  simulate.varBank.set("repeat", function (x) {
     testArgumentsSize(x, "Repeat", 2, 2);
     let items = toNum(evaluateNode(x[1].node, x[1].scope, simulate));
     let count = items;
@@ -545,18 +600,22 @@ export function createFunctions(simulate) {
     }
 
     let res = [];
-    let scope = { x: null, "-parent": x[1].scope, key: null };
+    let scope = new Map([
+      ["x", null],
+      ["-parent", x[1].scope],
+      ["key", null]
+    ]);
     for (let i = 0; i < count; i++) {
       if (items instanceof Vector) {
-        scope.key = items.items[i];
+        scope.set("key", items.items[i]);
       }
-      scope.x = new Material(i + 1);
+      scope.set("x", new Material(i + 1));
       res.push(evaluateNode(x[0].node, scope, simulate));
     }
 
     return new Vector(res, simulate, items instanceof Vector ? items.items.slice() : undefined);
-  };
-  simulate.varBank["repeat"].delayEvalParams = true;
+  });
+  simulate.varBank.get("repeat").delayEvalParams = true;
 
   defineFunction(simulate, "Select", { params: [{ name: "Haystack", needVector: true, noUnits: true }, { name: "Indexes", noUnits: true }] }, (x) => {
     if (x[1] instanceof Vector) {
@@ -617,18 +676,18 @@ export function createFunctions(simulate) {
 
   defineFunction(simulate, "Reverse", {
     allowEmpty: true, params: { name: "Items..." }, prep: function (x) {
-      return simulate.varBank["join"](x);
+      return simulate.varBank.get("join")(x);
     }
   }, (x) => {
     return new Vector(x.items.slice().reverse(), simulate, x.names ? x.names.slice().reverse() : undefined);
   });
   defineFunction(simulate, "Reverse", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["reverse"](x);
+    return simulate.varBank.get("reverse")(x);
   });
 
   defineFunction(simulate, "Sort", {
     allowEmpty: true, params: { name: "Items..." }, prep: function (x) {
-      return toNum(simulate.varBank["join"](x));
+      return toNum(simulate.varBank.get("join")(x));
     }
   },
   /**
@@ -669,12 +728,12 @@ export function createFunctions(simulate) {
     return res;
   });
   defineFunction(simulate, "Sort", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["sort"](x);
+    return simulate.varBank.get("sort")(x);
   });
 
   defineFunction(simulate, "Unique", {
     allowEmpty: true, params: { name: "Items....", allowBoolean: true }, prep: function (x) {
-      return toNum(simulate.varBank["join"](x));
+      return toNum(simulate.varBank.get("join")(x));
     }
   }, (x) => {
     if (!x.items.length) {
@@ -704,12 +763,12 @@ export function createFunctions(simulate) {
     return new Vector(res, simulate, names);
   });
   defineFunction(simulate, "Unique", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["unique"](x);
+    return simulate.varBank.get("unique")(x);
   });
 
 
   defineFunction(simulate, "Union", { object: [simulate.varBank, VectorObject], params: [{ name: "Vector 1", needVector: true }, { name: "Vector 2", needVector: true }] }, (x) => {
-    return simulate.varBank["unique"](simulate.varBank["join"](x).items);
+    return simulate.varBank.get("unique")(simulate.varBank.get("join")(x).items);
   });
 
   defineFunction(simulate, "Intersection", { object: [simulate.varBank, VectorObject], params: [{ name: "Vector 1", needVector: true }, { name: "Vector 2", needVector: true }] }, (x) => {
@@ -726,7 +785,7 @@ export function createFunctions(simulate) {
         }
       }
     }
-    return simulate.varBank["unique"](res);
+    return simulate.varBank.get("unique")(res);
   });
 
 
@@ -761,7 +820,7 @@ export function createFunctions(simulate) {
       }
     }
 
-    return simulate.varBank["unique"](res);
+    return simulate.varBank.get("unique")(res);
   });
 
   defineFunction(simulate, "Factorial", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
@@ -790,7 +849,7 @@ export function createFunctions(simulate) {
     return res;
   });
   defineFunction(simulate, "Max", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["max"](x);
+    return simulate.varBank.get("max")(x);
   });
 
   function joinVector(x, notToNum, skip) {
@@ -803,7 +862,7 @@ export function createFunctions(simulate) {
       if (skip) {
         return x[0];
       } else {
-        return simulate.varBank["flatten"]([x[0]]);
+        return simulate.varBank.get("flatten")([x[0]]);
       }
     } else {
       return new Vector(scalarsToVectors(x), simulate);
@@ -816,7 +875,7 @@ export function createFunctions(simulate) {
       }
     }
     if (x.length === 1 && x[0] instanceof Vector) {
-      return simulate.varBank["flatten"]([toNum(x[0])]).items;
+      return simulate.varBank.get("flatten")([toNum(x[0])]).items;
     }
     return joinVector(x, undefined, true).items;
   }
@@ -937,7 +996,7 @@ export function createFunctions(simulate) {
       return res;
     });
   defineFunction(simulate, "Min", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["min"](x);
+    return simulate.varBank.get("min")(x);
   });
   defineFunction(simulate, "Mean", { params: { name: "Items..." }, prep: joinArray },
     /**
@@ -952,7 +1011,7 @@ export function createFunctions(simulate) {
       return div(sum, new Material(x.length));
     });
   defineFunction(simulate, "Mean", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["mean"](x);
+    return simulate.varBank.get("mean")(x);
   });
   defineFunction(simulate, "Sum", { params: { name: "Items..." }, prep: joinArray },
     /**
@@ -969,7 +1028,7 @@ export function createFunctions(simulate) {
       return sum;
     });
   defineFunction(simulate, "Sum", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["sum"](x);
+    return simulate.varBank.get("sum")(x);
   });
   defineFunction(simulate, "Product", { params: { name: "Items..." }, prep: joinArray }, (x) => {
     let total = x[0];
@@ -979,12 +1038,12 @@ export function createFunctions(simulate) {
     return total;
   });
   defineFunction(simulate, "Product", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["product"](x);
+    return simulate.varBank.get("product")(x);
   });
   defineFunction(simulate, "Median", { params: { name: "Items..." }, prep: joinVector }, (x) => {
     let res = x.stackApply((v) => {
       /** @type {Material[]} */
-      let x = simulate.varBank["sort"]([v]).items;
+      let x = simulate.varBank.get("sort")([v]).items;
       if (x.length > 0) {
         if (Math.floor((x.length - 1) / 2) === (x.length - 1) / 2) {
           return x[(x.length - 1) / 2];
@@ -1000,14 +1059,14 @@ export function createFunctions(simulate) {
     return res;
   });
   defineFunction(simulate, "Median", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["median"](x);
+    return simulate.varBank.get("median")(x);
   });
   defineFunction(simulate, "StdDev", { params: { name: "Items..." }, prep: joinVector }, (x) => {
     let res = x.stackApply((v) => {
       let x = v.items;
       if (x.length > 1) {
 
-        let mean = simulate.varBank["mean"](x);
+        let mean = simulate.varBank.get("mean")(x);
         let sum = power(minus(x[0], mean), new Material(2));
 
         for (let i = 1; i < x.length; i++) {
@@ -1025,7 +1084,7 @@ export function createFunctions(simulate) {
     return res;
   });
   defineFunction(simulate, "StdDev", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["stddev"](x);
+    return simulate.varBank.get("stddev")(x);
   });
   defineFunction(simulate, "Correlation", { params: [{ name: "Vector 1", needVector: true }, { name: "Vector 2", needVector: true }] }, (x) => {
     let v1 = toNum(x[0]);
@@ -1043,26 +1102,26 @@ export function createFunctions(simulate) {
     }
 
 
-    let v1Mean = simulate.varBank["mean"]([v1]);
-    let v2Mean = simulate.varBank["mean"]([v2]);
+    let v1Mean = simulate.varBank.get("mean")([v1]);
+    let v2Mean = simulate.varBank.get("mean")([v2]);
 
-    let v1StdDev = simulate.varBank["stddev"]([v1]);
-    let v2StdDev = simulate.varBank["stddev"]([v2]);
+    let v1StdDev = simulate.varBank.get("stddev")([v1]);
+    let v2StdDev = simulate.varBank.get("stddev")([v2]);
 
     if (v1StdDev.value === 0 || v2StdDev.value === 0) {
       return new Material(0);
     }
 
-    return div(simulate.varBank["sum"]([mult(minus(v1.clone(), v1Mean), minus(v2.clone(), v2Mean))]), mult(minus(simulate.varBank["count"]([v1]), new Material(1)), mult(v1StdDev, v2StdDev)));
+    return div(simulate.varBank.get("sum")([mult(minus(v1.clone(), v1Mean), minus(v2.clone(), v2Mean))]), mult(minus(simulate.varBank.get("count")([v1]), new Material(1)), mult(v1StdDev, v2StdDev)));
   });
-  simulate.varBank["count"] = function (x) {
-    x = simulate.varBank["join"](x).items;
+  simulate.varBank.set("count", function (x) {
+    x = simulate.varBank.get("join")(x).items;
     return new Material(x.length);
-  };
-  simulate.varBank["flatten"] = function (x) {
-    let res = flatten(simulate.varBank["join"](x));
+  });
+  simulate.varBank.set("flatten", function (x) {
+    let res = flatten(simulate.varBank.get("join")(x));
     return new Vector(res.items, simulate, res.hasName ? res.names : undefined);
-  };
+  });
 
   defineFunction(simulate, "Keys", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
     if (!x[0].names) {
@@ -1080,7 +1139,7 @@ export function createFunctions(simulate) {
     return new Material(x[0].items.length);
   });
   defineFunction(simulate, "Flatten", { object: VectorObject, params: [{ name: "Vector", needVector: true }] }, (x) => {
-    return simulate.varBank["flatten"](x);
+    return simulate.varBank.get("flatten")(x);
   });
 
   function flatten(x) {
@@ -1484,8 +1543,8 @@ export function createFunctions(simulate) {
     return stringify(x[0].toUpperCase(), simulate);
   });
 
-  simulate.varBank["stringbase"] = makeObjectBase(StringObject, simulate);
-  simulate.varBank["vectorbase"] = makeObjectBase(VectorObject, simulate);
+  simulate.varBank.set("stringbase", makeObjectBase(StringObject, simulate));
+  simulate.varBank.set("vectorbase", makeObjectBase(VectorObject, simulate));
 }
 
 
@@ -1581,6 +1640,19 @@ export function defineFunction(simulate, name, definition, fn) {
 
     for (let i = 0; i < x.length; i++) {
       let config = arr ? configs[i] : configs;
+
+      function simplify(param) {
+        if (param instanceof UserFunction) {
+          return simplify(param.fn([]));
+        }
+        if (!config.needPrimitive && !config.allowOptionalPrimitive && !config.needAgent && !config.needPopulation) {
+          if (param instanceof SPrimitive && !(param instanceof SPopulation)) {
+            return simplify(toNum(param));
+          }
+        }
+        return param;
+      }
+      x[i] = simplify(x[i]);
 
       if (config.noUnits && (toNum(x[i]) instanceof Material) && toNum(x[i]).units && !toNum(x[i]).units.isUnitless()) {
         throw new ModelError(`${fnName} does not accept units for the parameter '${config.name}'.`, {
@@ -1747,14 +1819,23 @@ export function defineFunction(simulate, name, definition, fn) {
   };
 
   if (!definition.object) {
-    simulate.varBank[name.toLowerCase()] = f;
+    simulate.varBank.set(name.toLowerCase(), f);
   } else {
     if (definition.object instanceof Array) {
       for (let i = 0; i < definition.object.length; i++) {
-        definition.object[i][name.toLowerCase()] = f;
+        if (definition.object[i] instanceof Map) {
+          definition.object[i].set(name.toLowerCase(), f);
+        } else {
+          definition.object[i][name.toLowerCase()] = f;
+
+        }
       }
     } else {
-      definition.object[name.toLowerCase()] = f;
+      if (definition.object instanceof Map) {
+        definition.object.set(name.toLowerCase(), f);
+      } else {
+        definition.object[name.toLowerCase()] = f;
+      }
     }
   }
 

@@ -1,8 +1,19 @@
 
 export let fn = {
+  /**
+   * @param {number} a
+   * @param {number} b
+   * @returns 
+   */
   "+": function (a, b) {
     return a + b;
   },
+  
+  /**
+   * @param {number} a 
+   * @param {number=} b 
+   * @returns 
+   */
   "-": function (a, b) {
     if (b !== undefined) {
       return a - b;
@@ -10,30 +21,79 @@ export let fn = {
       return -a;
     }
   },
+
+  /**
+   * @param {number} a 
+   * @param {number} b 
+   * @returns 
+   */
   "*": function (a, b) {
     return a * b;
   },
+
+  /**
+   * @param {number} a 
+   * @param {number} b 
+   * @returns 
+   */
   "/": function (a, b) {
     return a / b;
   },
+  
   "=": function (a, b) {
     return a === b;
   },
+
+  /**
+   * @param {number} a 
+   * @param {number} b 
+   * @returns 
+   */
   "<": function (a, b) {
     return a < b;
   },
+
+  /**
+   * @param {number} a 
+   * @param {number} b 
+   * @returns 
+   */
   "<=": function (a, b) {
     return a <= b;
   },
+
+  /**
+   * @param {number} a 
+   * @param {number} b 
+   * @returns 
+   */
   ">": function (a, b) {
     return a > b;
   },
+
+  /**
+   * @param {number} a 
+   * @param {number} b 
+   * @returns 
+   */
   ">=": function (a, b) {
     return a >= b;
   },
+
+  /**
+   * @param {number} a 
+   * @param {number} b 
+   * @returns 
+   */
   "mod": function (a, b) {
     return a % b;
   },
+
+  /**
+   * @param {number} a 
+   * @param {number} b 
+   * @returns 
+   */
   "expt": function (a, b) {
     return Math.pow(a, b);
   },
@@ -45,6 +105,12 @@ export let fn = {
   "tan": Math.tan,
   "atan": Math.atan,
   "sqrt": Math.sqrt,
+
+  /**
+   * @param {number} a 
+   * @param {number=} b 
+   * @returns 
+   */
   "log": function (a, b) {
     if (b !== undefined) {
       return Math.log(a) / Math.log(b);

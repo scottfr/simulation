@@ -31,6 +31,7 @@ import { Model } from "./api/Model.js";
  * @property {Material=} model.timeStart
  * @property {Material=} model.timeStep
  * @property {Material=} model.timePause
+ * @property {import("./formula/Units.js").UnitStore} model.timeUnits
  */
 
 
@@ -144,7 +145,10 @@ function innerRunSimulation(simulate, config) {
     simulate.config = config;
   }
 
-  simulate.evaluatingLine = null;
+  simulate.evaluatingPosition = {
+    line: null,
+    source: null
+  };
 
   if (config.resultsWindow) {
     if (!config.resultsWindow.windowContext.simulate.completed()) {
@@ -219,10 +223,10 @@ function innerRunSimulation(simulate, config) {
 
   // Set Up simulation time settings
 
-  let u = simulate.unitManager.getUnitStore([timeUnits], [1]);
-  model.timeLength = new Material(simulate.model.timeLength, u);
-  model.timeStart = new Material(simulate.model.timeStart || 0, u);
-  model.timeStep = new Material(simulate.model.timeStep, u);
+  model.timeUnits = simulate.unitManager.getUnitStore([timeUnits], [1]);
+  model.timeLength = new Material(simulate.model.timeLength, model.timeUnits);
+  model.timeStart = new Material(simulate.model.timeStart || 0, model.timeUnits);
+  model.timeStep = new Material(simulate.model.timeStep, model.timeUnits);
 
   if (model.timeStep.value <= 0 || isNaN(model.timeStep.value)) {
     throw new ModelError("The model time step must be a positive number.", {
@@ -239,7 +243,7 @@ function innerRunSimulation(simulate, config) {
 
 
   if (simulate.model.timePause > 0) {
-    model.timePause = new Material(simulate.model.timePause, u);
+    model.timePause = new Material(simulate.model.timePause, model.timeUnits);
 
     if (model.timePause.value < model.timeStep.value) {
       throw new ModelError("Time pause cannot be smaller than the time step.", {
@@ -248,7 +252,7 @@ function innerRunSimulation(simulate, config) {
     }
   }
 
-  simulate.timeUnits = u;
+  simulate.timeUnits = model.timeUnits;
 
 
   // End Simulation time settings setup
@@ -256,7 +260,7 @@ function innerRunSimulation(simulate, config) {
   /** @type {Object<string, import('./Simulator').SolverType>} */
   let solvers = {}; // Simulation solvers
   solvers.base = {
-    timeStep: new Material(simulate.model.timeStep, u),
+    timeStep: new Material(simulate.model.timeStep, model.timeUnits),
     algorithm: simulate.model.algorithm,
     id: "base",
     maxLoaded: -1
@@ -269,7 +273,7 @@ function innerRunSimulation(simulate, config) {
     let solver = folders[i].customTimeSettings;
     if (solver) {
       if (solver.enabled) {
-        solvers[folders[i].id] = Object.assign({}, solver, { timeStep: new Material(+solver.timeStep, u) });
+        solvers[folders[i].id] = Object.assign({}, solver, { timeStep: new Material(+solver.timeStep, model.timeUnits) });
         if (solvers[folders[i].id].timeStep.value <= 0 || isNaN(solvers[folders[i].id].timeStep.value)) {
           throw new ModelError("The folder time step must be a positive number.", {
             primitive: folders[i],
@@ -324,6 +328,13 @@ function innerRunSimulation(simulate, config) {
 
         if (err instanceof ModelError) {
           msg = msg + "<br/><br/>" + err.message;
+          if (simulate.evaluatingPosition?.line) {
+            annotations.push({
+              type: "error",
+              row: simulate.evaluatingPosition.line - 1,
+              text: err.message
+            });
+          }
         } else {
           if (err.toString) {
             if (err.match && err.match(/line (\d+)/i)) {
@@ -331,7 +342,7 @@ function innerRunSimulation(simulate, config) {
 
               annotations.push({
                 type: "error",
-                row: l !== undefined ? l - 1 : simulate.evaluatingLine - 1,
+                row: l !== undefined ? l - 1 : simulate.evaluatingPosition.line - 1,
                 text: err
               });
             }
@@ -489,7 +500,7 @@ function innerRunSimulation(simulate, config) {
           submodel.agents.push(agent);
         }
         for (let dna of submodel.DNAs) {
-          decodeDNA(dna, agent, simulate);
+          decodeDNA(dna, agent, simulate, submodel.id !== "base");
         }
       }
     }
@@ -736,6 +747,15 @@ function innerRunSimulation(simulate, config) {
     } else {
 
       let count = div(model.timeLength, model.timeStep);
+
+      // Max size for a JS array is a 32-bit integer
+      const MAX_ARRAY_LENGTH = 4294967294;
+      if (count.value > MAX_ARRAY_LENGTH) {
+        throw new ModelError(`You have ${count} time steps, maximum is ${MAX_ARRAY_LENGTH}.`,
+          {
+            code: 9108
+          });
+      }
       for (let i = 0; i <= count.value; i++) {
         simulate.displayInformation.times.push(plus(model.timeStart, mult(model.timeStep, new Material(i))).value);
       }
@@ -864,7 +884,7 @@ export function cleanData(x, removeVectors = false) {
       if (x.names && x.names.length) {
         let r = {};
         for (let i = 0; i < x.names.length; i++) {
-          r[x.names[i]] = cleanData(x.items[i]);
+          r[x.names[i]] = cleanData(x.items[i], removeVectors);
         }
         return r;
       } else {
@@ -946,7 +966,7 @@ export function createUnitStore(u, simulate, primitive) {
 
   try {
     // @ts-ignore
-    return simpleEquation("{1 " + u + "}", simulate, {}).units;
+    return simpleEquation("{1 " + u + "}", simulate, new Map()).units;
   } catch (_err) {
     throw new ModelError(`Invalid units: "<i>${u}</i>"`, {
       primitive: primitive,
@@ -960,19 +980,19 @@ export function createUnitStore(u, simulate, primitive) {
 /**
  * @param {string} eq
  * @param {import("./Simulator").Simulator} simulate
- * @param {object=} scope
- * @param {object=} nodeBase
+ * @param {Map=} scope
+ * @param {Map=} nodeBase
  * @param {object=} tree
  */
 export function simpleEquation(eq, simulate, scope, nodeBase, tree) {
   if (!scope) {
-    scope = Object.create(null);
+    scope = new Map();
   }
   if (!nodeBase) {
-    nodeBase = Object.create(null);
+    nodeBase = new Map();
   }
   if (!tree) {
-    tree = trimTree(createTree(eq), nodeBase, simulate);
+    tree = trimTree(createTree(eq, "_", simulate), nodeBase, simulate);
   }
 
   let res = evaluateTree(tree, scope, simulate);
@@ -1073,7 +1093,7 @@ export function simpleUnitsTest(mat, units, simulate, primitive = null, showEdit
  * @param {import("./Simulator").Simulator} simulate
  */
 function evaluateGlobals(globals, simulate) {
-  evaluateTree(trimTree(createTree(globals), {}, simulate), simulate.varBank, simulate);
+  evaluateTree(trimTree(createTree(globals, "macros", simulate), new Map(), simulate), simulate.varBank, simulate);
 }
 
 
@@ -1117,17 +1137,17 @@ function getDNA(node, submodel, solvers, simulate) {
   } else {
     try {
       if (node instanceof Stock) {
-        dna.value = replaceMacros(node, dna, createTree(node.initial), submodel, solvers, simulate, true);
+        dna.value = replaceMacros(node, dna, createTree(node.initial, "p:" + dna.id + ":initial", simulate), submodel, solvers, simulate, true);
       } else if (node instanceof Flow) {
-        dna.value = replaceMacros(node, dna, createTree(node.rate), submodel, solvers, simulate, false);
+        dna.value = replaceMacros(node, dna, createTree(node.rate, "p:" + dna.id + ":rate", simulate), submodel, solvers, simulate, false);
       } else if (node instanceof Variable) {
-        dna.value = replaceMacros(node, dna, createTree(node.value), submodel, solvers, simulate, false);
+        dna.value = replaceMacros(node, dna, createTree(node.value, "p:" + dna.id + ":value", simulate), submodel, solvers, simulate, false);
       } else if (node instanceof State) {
-        dna.value = replaceMacros(node, dna, createTree(node.startActive), submodel, solvers, simulate, true);
+        dna.value = replaceMacros(node, dna, createTree("" + node.startActive, "p:" + dna.id + ":startActive", simulate), submodel, solvers, simulate, true);
       } else if (node instanceof Transition) {
-        dna.value = replaceMacros(node, dna, createTree(node.value), submodel, solvers, simulate, false);
+        dna.value = replaceMacros(node, dna, createTree("" + node.value, "p:" + dna.id + ":value", simulate), submodel, solvers, simulate, false);
       } else if (node instanceof Action) {
-        dna.value = replaceMacros(node, dna, createTree(node.action), submodel, solvers, simulate, false);
+        dna.value = replaceMacros(node, dna, createTree(node.action, "p:" + dna.id + ":action", simulate), submodel, solvers, simulate, false);
       }
     } catch (err) {
       let msg = `The primitive <i>[${toHTML(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
@@ -1159,7 +1179,7 @@ function getDNA(node, submodel, solvers, simulate) {
     dna.repeat = node.repeat;
     dna.recalculate = node.recalculate || node.trigger === "Condition";
     try {
-      dna.triggerValue = createTree(node.value);
+      dna.triggerValue = createTree(node.value, "p:" + node.id + ":triggerValue", simulate);
     } catch (err) {
       let msg = `The trigger for <i>[${toHTML(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
       if (err instanceof ModelError) {
@@ -1181,7 +1201,7 @@ function getDNA(node, submodel, solvers, simulate) {
       dna.residency = null;
     } else {
       try {
-        dna.residency = evaluateTree(trimTree(createTree(node.residency), {}, simulate), {}, simulate);
+        dna.residency = evaluateTree(trimTree(createTree(node.residency, "p:" + dna.id + ":residency", simulate), new Map(), simulate), new Map(), simulate);
         if (!dna.residency.units) {
           dna.residency.units = simulate.timeUnits;
         }
@@ -1201,7 +1221,7 @@ function getDNA(node, submodel, solvers, simulate) {
     if (node.type === "Conveyor") {
       dna.stockType = "Conveyor";
       try {
-        dna.delay = evaluateTree(trimTree(createTree(node.delay), {}, simulate), {}, simulate);
+        dna.delay = evaluateTree(trimTree(createTree(node.delay, "p:" + node.id + ":delay", simulate), new Map(), simulate), new Map(), simulate);
         if (!dna.delay.units) {
           dna.delay.units = simulate.timeUnits;
         }
@@ -1348,8 +1368,10 @@ function folderSolvers(node, solvers) {
  * @param {DNA} dna
  * @param {SAgent} agent
  * @param {import("./Simulator").Simulator} simulate
+ * @param {boolean} inContainer
+ * 
  */
-export function decodeDNA(dna, agent, simulate) {
+export function decodeDNA(dna, agent, simulate, inContainer) {
   /** @type {SPrimitive} */
   let x;
   if (dna.primitive instanceof Variable) {
@@ -1371,10 +1393,12 @@ export function decodeDNA(dna, agent, simulate) {
   if (x) {
     x.dna = dna;
     x.id = dna.id;
-    x.index = agent.index;
-    x.agentId = agent.agentId;
-    x.container = agent;
-    x.createIds();
+    if (inContainer) {
+      x.index = agent.index;
+      x.agentId = agent.agentId;
+      x.container = agent;
+      x.createIds();
+    }
 
     x.frozen = dna.frozen;
 
@@ -1434,17 +1458,17 @@ export function linkPrimitive(primitive, dna, simulate) {
       let alpha = null,
         omega = null;
 
-      if (localNeighborhood["[alpha"]) {
-        alpha = /** @type {any} */ (localNeighborhood["[alpha"]);
-        if (!localNeighborhood["alpha"]) {
-          localNeighborhood["alpha"] = alpha;
+      if (localNeighborhood.has("[alpha")) {
+        alpha = /** @type {any} */ (localNeighborhood.get("[alpha"));
+        if (!localNeighborhood.has("alpha")) {
+          localNeighborhood.set("alpha", alpha);
         }
       }
 
-      if (localNeighborhood["[omega"]) {
-        omega = /** @type {any} */ (localNeighborhood["[omega"]);
-        if (!localNeighborhood["omega"]) {
-          localNeighborhood["omega"] = omega;
+      if (localNeighborhood.has("[omega")) {
+        omega = /** @type {any} */ (localNeighborhood.get("[omega"));
+        if (!localNeighborhood.has("omega")) {
+          localNeighborhood.set("omega", omega);
         }
       }
 
@@ -1526,9 +1550,9 @@ export function linkPrimitive(primitive, dna, simulate) {
       } else {
         let source = dna.source;
         let sourceSet = false;
-        for (let neighbor in myNeighborhood) {
-          if (source === myNeighborhood[neighbor].id) {
-            primitive.setSource(myNeighborhood[neighbor]);
+        for (let neighbor of myNeighborhood.keys()) {
+          if (source === myNeighborhood.get(neighbor).id) {
+            primitive.setSource(myNeighborhood.get(neighbor));
             sourceSet = true;
             break;
           }
@@ -1601,14 +1625,15 @@ export function setAgentInitialValues(agent) {
 function buildNetwork(submodel, simulate) {
   if (submodel.network === "Custom Function") {
     let neighbors = getPrimitiveNeighborhood(submodel, submodel.dna, simulate, []);
-    let tree = trimTree(createTree(submodel.networkFunction), neighbors, simulate);
+    let tree = trimTree(createTree(submodel.networkFunction, "p:" + submodel.id + ":networkFunction", simulate), neighbors, simulate);
     for (let i = 0; i < submodel.agents.length - 1; i++) {
       for (let j = i + 1; j < submodel.agents.length; j++) {
-        if (trueValue(simpleEquation(submodel.networkFunction, simulate, {
-          "-parent": simulate.varBank,
-          "a": submodel.agents[i],
-          "b": submodel.agents[j]
-        }, neighbors, tree))) {
+        // @ts-ignore
+        if (trueValue(simpleEquation(submodel.networkFunction, simulate, new Map([
+          ["-parent", simulate.varBank],
+          ["a", submodel.agents[i]],
+          ["b", submodel.agents[j]]
+        ]), neighbors, tree))) {
           submodel.agents[i].connect(submodel.agents[j]);
         }
       }
@@ -1645,11 +1670,12 @@ function buildPlacements(submodel, simulate) {
     submodel.agents.forEach((s) => {
       let n = getPrimitiveNeighborhood(submodel, submodel.dna, simulate, []);
       // @ts-ignore
-      n.self = s;
-      s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation(submodel.placementFunction, simulate, {
-        "-parent": simulate.varBank,
-        "self": s
-      }, n)), submodel.geoDimUnitsObject, simulate, null, null, "Agent placement functions must return a two element vector");
+      n.set("self", s);
+      // @ts-ignore
+      s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation(submodel.placementFunction, simulate, new Map([
+        ["-parent", simulate.varBank],
+        ["self", s]
+      ]), n)), submodel.geoDimUnitsObject, simulate, null, null, "Agent placement functions must return a two element vector");
 
       validateAgentLocation(s.location, submodel.node);
 
@@ -1659,12 +1685,13 @@ function buildPlacements(submodel, simulate) {
       }
     });
   } else if (submodel.placement === "Grid") {
-    tree = trimTree(createTree("{x: x*width(self), y: y*height(self)}"), {}, simulate);
+    tree = trimTree(createTree("{x: x*width(self), y: y*height(self)}", "_", simulate), new Map(), simulate);
     let size = submodel.agents.length;
-    let ratio = /** @type {number} */ (simpleNum(simpleEquation("width(self)/height(self)", simulate, {
-      "-parent": simulate.varBank,
-      "self": submodel
-    }, {}), submodel.geoDimUnitsObject, simulate));
+    // @ts-ignore
+    let ratio = /** @type {number} */ (simpleNum(simpleEquation("width(self)/height(self)", simulate, new Map([
+      ["-parent", simulate.varBank],
+      ["self", submodel]
+    ]), new Map()), submodel.geoDimUnitsObject, simulate));
 
     hCount = Math.sqrt(size / ratio);
     wCount = Math.floor(hCount * ratio);
@@ -1678,26 +1705,28 @@ function buildPlacements(submodel, simulate) {
     submodel.agents.forEach((s) => {
       let xPos = (j % wCount + 0.5) / wCount;
       let yPos = (Math.floor(j / wCount) + 0.5) / hCount;
-      s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation("{x: x*width(self), y: y*height(self)}", simulate, {
-        "self": s,
-        "x": new Material(xPos),
-        "y": new Material(yPos),
-        "-parent": simulate.varBank
-      }, {}, tree)), submodel.geoDimUnitsObject, simulate);
+      // @ts-ignore
+      s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation("{x: x*width(self), y: y*height(self)}", simulate, new Map([
+        ["self", s],
+        ["x", new Material(xPos)],
+        ["y", new Material(yPos)],
+        ["-parent", simulate.varBank]
+      ]), new Map(), tree)), submodel.geoDimUnitsObject, simulate);
       j++;
     });
   } else if (submodel.placement === "Ellipse") {
-    tree = trimTree(createTree("{width(self), height(self)}/2+{sin(index(self)/size*2*3.14159), cos(index(self)/size*2*3.14159)}*{width(self), height(self)}/2"), {}, simulate);
+    tree = trimTree(createTree("{width(self), height(self)}/2+{sin(index(self)/size*2*3.14159), cos(index(self)/size*2*3.14159)}*{width(self), height(self)}/2", "_", simulate), new Map(), simulate);
     let size = new Material(submodel.agents.length);
     submodel.agents.forEach((s) => {
-      s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation("{width(self), height(self)}/2+{sin(index(self)/size*2*3.14159), cos(index(self)/size*2*3.14159)}*{width(self), heigh(self)}/2", simulate, {
-        "self": s,
-        "size": size,
-        "-parent": simulate.varBank
-      }, {}, tree)), submodel.geoDimUnitsObject, simulate);
+      // @ts-ignore
+      s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation("{width(self), height(self)}/2+{sin(index(self)/size*2*3.14159), cos(index(self)/size*2*3.14159)}*{width(self), heigh(self)}/2", simulate, new Map([
+        ["self", s],
+        ["size", size],
+        ["-parent", simulate.varBank]
+      ]), new Map(), tree)), submodel.geoDimUnitsObject, simulate);
     });
   } else if (submodel.placement === "Network") {
-    tree = trimTree(createTree("{x: x*width(self), y: y*height(self)}"), {}, simulate);
+    tree = trimTree(createTree("{x: x*width(self), y: y*height(self)}", "_", simulate), new Map(), simulate);
 
     let graph = new Graph();
 
@@ -1745,12 +1774,13 @@ function buildPlacements(submodel, simulate) {
 
     layout.eachNode((node, point) => {
       let p = scalePoint(point.p);
-      node.data.data.location = simpleUnitsTest(simpleEquation("{x: x*width(self), y: y*height(self)}", simulate, {
-        "self": submodel,
-        "x": new Material(p.x),
-        "y": new Material(p.y),
-        "-parent": simulate.varBank
-      }, {}, tree), submodel.geoDimUnitsObject, simulate);
+      // @ts-ignore
+      node.data.data.location = simpleUnitsTest(simpleEquation("{x: x*width(self), y: y*height(self)}", simulate, new Map([
+        ["self", submodel],
+        ["x", new Material(p.x)],
+        ["y", new Material(p.y)],
+        ["-parent", simulate.varBank]
+      ]), new Map(), tree), submodel.geoDimUnitsObject, simulate);
     });
 
   } else {
@@ -1770,7 +1800,7 @@ function buildPlacements(submodel, simulate) {
  * @param {import("./Simulator").Simulator} simulate
  * @param {Primitive[]} extraLinksPrimitives
  *
- * @returns {Object<string, import('./Primitives').SPrimitive>}
+ * @returns {Map<string, import('./Primitives').SPrimitive>}
  */
 export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPrimitives) {
   let neighbors = dna.primitive.neighbors();
@@ -1786,9 +1816,10 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
   /** @type {Object<string, Placeholder>} */
   let placeholders = simulate.allPlaceholders[dna.id] ? simulate.allPlaceholders[dna.id] : {};
 
-  let ns = {
-    self: primitive
-  };
+  /** @type {Map} */
+  let ns = new Map([[
+    "self", primitive
+  ]]);
 
 
   if (primitive instanceof SPopulation) {
@@ -1800,12 +1831,12 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
   for (let neighbor of neighbors) {
     let item = neighbor.item;
     if (item instanceof Population) {
-      ns[primitive.simulate.simulationModel.submodels[item.id].dna.name.toLowerCase()] = primitive.simulate.simulationModel.submodels[item.id];
+      ns.set(primitive.simulate.simulationModel.submodels[item.id].dna.name.toLowerCase(),  primitive.simulate.simulationModel.submodels[item.id]);
 
       for (let dna of primitive.simulate.simulationModel.submodels[item.id].DNAs) {
         let key = dna.name.toLowerCase();
-        if (!(key in ns)) {
-          ns[key] = new Placeholder(dna, primitive, simulate);
+        if (!ns.has(key)) {
+          ns.set(key, new Placeholder(dna, primitive, simulate));
         }
       }
     } else if (neighbor.type !== "agent") {
@@ -1816,7 +1847,7 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
         if (primitive.container.childrenId[item.id]) {
           neighborhoodName = primitive.container.childrenId[item.id].dna.name.toLowerCase();
 
-          ns[neighborhoodName] = primitive.container.childrenId[item.id];
+          ns.set(neighborhoodName,  primitive.container.childrenId[item.id]);
           found = true;
         }
       }
@@ -1824,7 +1855,7 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
         if (primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id]) {
           neighborhoodName = primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id].dna.name.toLowerCase();
 
-          ns[neighborhoodName] = primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id];
+          ns.set(neighborhoodName, primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id]);
           found = true;
         }
       }
@@ -1847,11 +1878,11 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
       }
 
       if (primitive instanceof SFlow || primitive instanceof STransition) {
-        if (ns[neighborhoodName]) {
-          if (dna.targetId === ns[neighborhoodName].id) {
-            ns["[omega"] = ns[neighborhoodName];
-          } else if (dna.sourceId === ns[neighborhoodName].id) {
-            ns["[alpha"] = ns[neighborhoodName];
+        if (ns.has(neighborhoodName)) {
+          if (dna.targetId === ns.get(neighborhoodName).id) {
+            ns.set("[omega", ns.get(neighborhoodName));
+          } else if (dna.sourceId === ns.get(neighborhoodName).id) {
+            ns.set("[alpha", ns.get(neighborhoodName));
           }
         }
       }
@@ -1860,8 +1891,8 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
 
 
   for (let key in placeholders) {
-    if (!(key in ns)) {
-      ns[key] = placeholders[key];
+    if (!ns.has(key)) {
+      ns.set(key, placeholders[key]);
     }
   }
 
@@ -2106,6 +2137,330 @@ function clusterAddStock(cluster, stock) {
 // Ensures each macro primitive has a unique name
 let macroCounter = 0;
 
+
+
+
+function delayGenerator(parameters, primitiveDNA, node, submodel, solvers, simulate) {
+  let {
+    input,
+    initialValue,
+    period,
+    order
+  } = parameters;
+
+  order = evaluateTree(trimTree(order, new Map(), simulate), new Map(), simulate).value;
+
+  
+  if (order < 1 || order !== Math.floor(order)) {
+    throw new ModelError("DelayN order must be an integer greater than or equal to 1.", {
+      primitive: primitiveDNA.primitive,
+      showEditor: true,
+      code: 1078
+    });
+  }
+
+  let m = new Model();
+
+
+  let outflowName = "__DelayN Outflow " + macroCounter++;
+
+  let stockNames = [];
+  let stocks = [];
+  let flows = [];
+
+
+
+  for (let i = 0; i < order; i++) {
+    stockNames.push("__DelayN Stock " + macroCounter++);
+    stocks.push(m.Stock({
+      name: stockNames[stockNames.length - 1],
+      initial: "(iv) || (i)"
+    }));
+    stocks[i]._node.id = "" + Math.random();
+  }
+
+
+  let f = m.Flow(null, stocks[0], {
+    name: "DelayN Inflow",
+    rate: "(i)",
+    nonNegative: false
+  });
+  f._node.id = "" + Math.random();
+  flows.push(f);
+
+  for (let i = 1; i < order; i++) {
+    f = m.Flow(stocks[i - 1], stocks[i], {
+      name: "DelayN Flow " + i,
+      rate: "(alpha) / (p/order)",
+      nonNegative: false
+    });
+    f._node.id = "" + Math.random();
+    flows.push(f);
+  }
+
+  f = m.Flow(stocks[order - 1], null, {
+    name: outflowName,
+    rate: "(alpha) / (p/order)",
+    nonNegative: false
+  });
+  f._node.id = "" + Math.random();
+  flows.push(f);
+
+
+
+
+  period = new TreeNode("LINES", "LINES", node.position, [
+    // create temp variable with unitless value
+    new TreeNode("ASSIGN", "ASSIGN", node.position, [
+      new TreeNode("ASSIGNED", "ASSIGNED", node.position, [
+        new TreeNode("__tmp_macro_period", "IDENT", node.position)
+      ]),
+      new TreeNode("INNER", "INNER", node.position, [
+        new TreeNode("RemoveUnits", "IDENT", node.position),
+        new TreeNode("FUNCALL", "FUNCALL", node.position, [
+          period,
+          new TreeNode("\"" + simulate.timeUnitsString + "\"", "STRING", node.position)
+        ])
+      ])
+    ]),
+    // assert it's greater than 0
+    new TreeNode("INNER", "INNER", node.position, [
+      new TreeNode("Assert", "IDENT", node.position),
+      new TreeNode("FUNCALL", "FUNCALL", node.position, [
+        // Code for:
+        //   > not contains({PERIOD > 0}, false)
+        // this confirms all the values in period are greater than 0
+        // period can be a scalar or vector
+        new TreeNode("NOT", "NOT", node.position, [
+
+          new TreeNode("INNER", "INNER", node.position, [
+            new TreeNode("Contains", "IDENT", node.position),
+            new TreeNode("FUNCALL", "FUNCALL", node.position, [
+
+              new TreeNode("ARRAY", "ARRAY", node.position, [
+                new TreeNode("LABEL", "LABEL", node.position, [
+                  new TreeNode("INNER", "INNER", node.position, [
+                    new TreeNode(">", "GT", node.position, [
+                      new TreeNode("__tmp_macro_period", "IDENT", node.position),
+                      new TreeNode("0", "INTEGER", node.position)
+                    ])
+                  ])
+                ])
+              ]),
+              new TreeNode("FALSE", "FALSE", node.position)
+            ])
+          ]),
+        ]),
+
+        new TreeNode("\"Period for Delay() must be greater than 0.\"", "STRING", node.position)
+      ])
+    ]),
+    // return it
+    new TreeNode("__tmp_macro_period", "IDENT", node.position)
+  ]);
+
+  let periodOverOrder = new TreeNode("DIV", "DIV", node.position, [
+    period,
+    new TreeNode("" + order, "INTEGER", node.position)
+  ]);
+
+  let sDNAs = stocks.map((s) => getDNA(s, submodel, solvers, simulate));
+  let fDNAs = flows.map((i) => getDNA(i, submodel, solvers, simulate));
+
+  
+  for (let i = 1; i < fDNAs.length; i++) {
+    fDNAs[i].extraLinksPrimitives.push(stocks[i - 1]);
+  }
+
+  primitiveDNA.extraLinksPrimitives.push(flows[flows.length - 1]);
+
+  fDNAs[0].value = input.cloneStructure();
+  let init = new TreeNode("MULT", "MULT", node.position, [
+    initialValue ? initialValue.cloneStructure() : input.cloneStructure(),
+    periodOverOrder.cloneStructure()
+  ]);
+  for (let i = 0; i < sDNAs.length; i++) {
+    sDNAs[i].value = init.cloneStructure();
+  }
+
+  for (let i = 1; i < fDNAs.length; i++) {
+    fDNAs[i].value = new TreeNode("DIV", "DIV", node.position, [
+      new TreeNode("[" + stockNames[i - 1] + "]", "PRIMITIVE", node.position),
+      periodOverOrder.cloneStructure()
+    ]);
+  }
+
+  for (let i = 0; i < sDNAs.length; i++) {
+    sDNAs[i].noOutput = true;
+    sDNAs[i].adoptUnits = true;
+    sDNAs[i].neighborProxyDNA = primitiveDNA;
+    submodel.DNAs.push(sDNAs[i]);
+  }
+
+  for (let i = 0; i < fDNAs.length; i++) {
+    fDNAs[i].noOutput = true;
+    fDNAs[i].adoptUnits = true;
+    fDNAs[i].neighborProxyDNA = primitiveDNA;
+    submodel.DNAs.push(fDNAs[i]);
+  }
+
+
+  return new TreeNode("[" + outflowName + "]", "PRIMITIVE", node.position);
+}
+
+
+function smoothGenerator(parameters, primitiveDNA, node, submodel, solvers, simulate) {
+  let {
+    input,
+    initialValue,
+    period,
+    order
+  } = parameters;
+
+  order = evaluateTree(trimTree(order, new Map(), simulate), new Map(), simulate).value;
+
+  if (order < 1 || order !== Math.floor(order)) {
+    throw new ModelError("SmoothN order must be an integer greater than or equal to 1.", {
+      primitive: primitiveDNA.primitive,
+      showEditor: true,
+      code: 1079
+    });
+  }
+
+  let m = new Model();
+
+
+  let stockNames = [];
+  let stocks = [];
+  let flows = [];
+
+
+  for (let i = 0; i < order; i++) {
+    stockNames.push("__SmoothN Stock " + macroCounter++);
+    stocks.push(m.Stock({
+      name: stockNames[stockNames.length - 1],
+      initial: "(iv) || (i)"
+    }));
+    stocks[i]._node.id = "" + Math.random();
+  }
+
+  for (let i = 0; i < order; i++) {
+    let f = m.Flow(null, stocks[i], {
+      name: "SmoothN Flow " + i,
+      rate: "(alpha) / (p/order)",
+      nonNegative: false
+    });
+    f._node.id = "" + Math.random();
+    flows.push(f);
+  }
+
+
+
+
+  period = new TreeNode("LINES", "LINES", node.position, [
+    // create temp variable with unitless value
+    new TreeNode("ASSIGN", "ASSIGN", node.position, [
+      new TreeNode("ASSIGNED", "ASSIGNED", node.position, [
+        new TreeNode("__tmp_macro_period", "IDENT", node.position)
+      ]),
+      new TreeNode("INNER", "INNER", node.position, [
+        new TreeNode("RemoveUnits", "IDENT", node.position),
+        new TreeNode("FUNCALL", "FUNCALL", node.position, [
+          period,
+          new TreeNode("\"" + simulate.timeUnitsString + "\"", "STRING", node.position)
+        ])
+      ])
+    ]),
+    // assert it's greater than 0
+    new TreeNode("INNER", "INNER", node.position, [
+      new TreeNode("Assert", "IDENT", node.position),
+      new TreeNode("FUNCALL", "FUNCALL", node.position, [
+        
+
+        // Code for:
+        //   > not contains({PERIOD > 0}, false)
+        // this confirms all the values in period are greater than 0
+        // period can be a scalar or vector
+        new TreeNode("NOT", "NOT", node.position, [
+
+          new TreeNode("INNER", "INNER", node.position, [
+            new TreeNode("Contains", "IDENT", node.position),
+            new TreeNode("FUNCALL", "FUNCALL", node.position, [
+
+              new TreeNode("ARRAY", "ARRAY", node.position, [
+                new TreeNode("LABEL", "LABEL", node.position, [
+                  new TreeNode("INNER", "INNER", node.position, [
+                    new TreeNode(">", "GT", node.position, [
+                      new TreeNode("__tmp_macro_period", "IDENT", node.position),
+                      new TreeNode("0", "INTEGER", node.position)
+                    ])
+                  ])
+                ])
+              ]),
+              new TreeNode("FALSE", "FALSE", node.position)
+            ])
+          ]),
+        ]),
+
+        new TreeNode("\"Period for Smooth() must be greater than 0.\"", "STRING", node.position)
+      ])
+    ]),
+    // return it
+    new TreeNode("__tmp_macro_period", "IDENT", node.position)
+  ]);
+
+  let periodOverOrder = new TreeNode("DIV", "DIV", node.position, [
+    period,
+    new TreeNode("" + order, "INTEGER", node.position)
+  ]);
+
+  let sDNAs = stocks.map((s) => getDNA(s, submodel, solvers, simulate));
+  let fDNAs = flows.map((i) => getDNA(i, submodel, solvers, simulate));
+
+  for (let i = 0; i < order; i++) {
+    fDNAs[i].extraLinksPrimitives.push(stocks[i]);
+    if (i > 0) {
+      fDNAs[i].extraLinksPrimitives.push(stocks[i - 1]);
+    }
+  }
+
+  primitiveDNA.extraLinksPrimitives.push(stocks[stocks.length - 1]);
+  
+
+  for (let i = 0; i < order; i++) {
+    sDNAs[i].value = initialValue ? initialValue.cloneStructure() : input.cloneStructure();
+  }
+
+  for (let i = 0; i < order; i++) {
+    fDNAs[i].value = new TreeNode("DIV", "DIV", node.position, [
+      new TreeNode("MINUS", "MINUS", node.position, [
+        i === 0 ? input.cloneStructure() : new TreeNode("[" + stockNames[i - 1] + "]", "PRIMITIVE", node.position),
+        new TreeNode("[" + stockNames[i] + "]", "PRIMITIVE", node.position)
+      ]),
+      periodOverOrder.cloneStructure()
+    ]);
+  }
+
+  for (let i = 0; i < order; i++) {
+    fDNAs[i].noOutput = true;
+    fDNAs[i].adoptUnits = true;
+    fDNAs[i].neighborProxyDNA = primitiveDNA;
+    submodel.DNAs.push(fDNAs[i]);
+    sDNAs[i].noOutput = true;
+    sDNAs[i].adoptUnits = true;
+    sDNAs[i].neighborProxyDNA = primitiveDNA;
+    submodel.DNAs.push(sDNAs[i]);
+  }
+
+
+
+  return new TreeNode("[" + stockNames[stockNames.length - 1] + "]", "PRIMITIVE", node.position);
+
+}
+
+
+
+
 /** @type {Object<string, { replacement: function(any, DNA, TreeNode, any, any, import("./Simulator").Simulator): TreeNode}>} */
 const MACRO_FNS = {
   "_initial": {
@@ -2121,372 +2476,28 @@ const MACRO_FNS = {
   },
   "smooth": {
     replacement: (parameters, primitiveDNA, node, submodel, solvers, simulate) => {
-      let {
-        input,
-        initialValue,
-        period
-      } = parameters;
-
-
-      period = new TreeNode("LINES", "LINES", node.line, [
-        // create temp variable with unitless value
-        new TreeNode("ASSIGN", "ASSIGN", node.line, [
-          new TreeNode("ASSIGNED", "ASSIGNED", node.line, [
-            new TreeNode("__tmp_macro_period", "IDENT", node.line)
-          ]),
-          new TreeNode("INNER", "INNER", node.line, [
-            new TreeNode("RemoveUnits", "IDENT", node.line),
-            new TreeNode("FUNCALL", "FUNCALL", node.line, [
-              period,
-              new TreeNode("\"" + simulate.timeUnitsString + "\"", "STRING", node.line)
-            ])
-          ])
-        ]),
-        // assert it's greater than 0
-        new TreeNode("INNER", "INNER", node.line, [
-          new TreeNode("Assert", "IDENT", node.line),
-          new TreeNode("FUNCALL", "FUNCALL", node.line, [
-            new TreeNode(">", "GT", node.line, [
-              new TreeNode("__tmp_macro_period", "IDENT", node.line),
-              new TreeNode("0", "INTEGER", node.line)
-            ]),
-            new TreeNode("\"Period for Smooth() must be greater than 0.\"", "STRING", node.line)
-          ])
-        ]),
-        // return it
-        new TreeNode("__tmp_macro_period", "IDENT", node.line)
-      ]);
-
-      let m = new Model();
-
-      let stockName = "__Smooth Stock " + macroCounter++;
-      let s = m.Stock({
-        name: stockName,
-        initial: "(iv) || (i)"
-      });
-      s._node.id = "" + Math.random();
-
-      let i = m.Flow(null, s, {
-        name: "__Smooth Inflow",
-        rate: "((i) - [Omega]) / (p)",
-        nonNegative: false
-      });
-      i._node.id = "" + Math.random();
-
-
-
-      let sDNA = getDNA(s, submodel, solvers, simulate);
-      let iDNA = getDNA(i, submodel, solvers, simulate);
-
-      primitiveDNA.extraLinksPrimitives.push(s);
-      iDNA.extraLinksPrimitives.push(s);
-
-      sDNA.value = initialValue ? initialValue.cloneStructure() : input.cloneStructure();
-
-      let inflow = new TreeNode("DIV", "DIV", node.line, [
-        new TreeNode("MINUS", "MINUS", node.line, [
-          input.cloneStructure(),
-          new TreeNode("[" + stockName + "]", "PRIMITIVE", node.line)
-        ]),
-        period.cloneStructure()]);
-
-      iDNA.value = inflow;
-
-
-      iDNA.noOutput = true;
-      sDNA.noOutput = true;
-
-      iDNA.adoptUnits = true;
-      sDNA.adoptUnits = true;
-
-      iDNA.neighborProxyDNA = primitiveDNA;
-      sDNA.neighborProxyDNA = primitiveDNA;
-
-      submodel.DNAs.push(iDNA);
-      submodel.DNAs.push(sDNA);
-
-      return new TreeNode("[" + stockName + "]", "PRIMITIVE", node.line);
+      parameters.order = new TreeNode("1", "INTEGER", node.position);
+      return smoothGenerator(parameters, primitiveDNA, node, submodel, solvers, simulate);
     }
+  },
+  "smoothn": {
+    replacement: (...params) => smoothGenerator(...params)
   },
   "delay1": {
     replacement: (parameters, primitiveDNA, node, submodel, solvers, simulate) => {
-      let {
-        input,
-        initialValue,
-        period
-      } = parameters;
-
-      let m = new Model();
-
-      period = new TreeNode("LINES", "LINES", node.line, [
-        // create temp variable with unitless value
-        new TreeNode("ASSIGN", "ASSIGN", node.line, [
-          new TreeNode("ASSIGNED", "ASSIGNED", node.line, [
-            new TreeNode("__tmp_macro_period", "IDENT", node.line)
-          ]),
-          new TreeNode("INNER", "INNER", node.line, [
-            new TreeNode("RemoveUnits", "IDENT", node.line),
-            new TreeNode("FUNCALL", "FUNCALL", node.line, [
-              period,
-              new TreeNode("\"" + simulate.timeUnitsString + "\"", "STRING", node.line)
-            ])
-          ])
-        ]),
-        // assert it's greater than 0
-        new TreeNode("INNER", "INNER", node.line, [
-          new TreeNode("Assert", "IDENT", node.line),
-          new TreeNode("FUNCALL", "FUNCALL", node.line, [
-            new TreeNode(">", "GT", node.line, [
-              new TreeNode("__tmp_macro_period", "IDENT", node.line),
-              new TreeNode("0", "INTEGER", node.line)
-            ]),
-            new TreeNode("\"Period for Delay1() must be greater than 0.\"", "STRING", node.line)
-          ])
-        ]),
-        // return it
-        new TreeNode("__tmp_macro_period", "IDENT", node.line)
-      ]);
-
-
-      let stockName = "__Delay1 Stock " + macroCounter++;
-      let outflowName = "__Delay1 Outflow " + macroCounter++;
-
-      let s = m.Stock({
-        name: stockName,
-        initial: "(iv) || (i)"
-      });
-      s._node.id = "" + Math.random();
-
-      let i = m.Flow(null, s, {
-        name: "__Delay1 Inflow",
-        rate: "(i)",
-        nonNegative: false
-      });
-      i._node.id = "" + Math.random();
-
-      let o = m.Flow(s, null, {
-        name: outflowName,
-        rate: "(alpha) / (p)",
-        nonNegative: false
-      });
-      o._node.id = "" + Math.random();
-
-
-      let sDNA = getDNA(s, submodel, solvers, simulate);
-      let iDNA = getDNA(i, submodel, solvers, simulate);
-      let oDNA = getDNA(o, submodel, solvers, simulate);
-
-
-      primitiveDNA.extraLinksPrimitives.push(o);
-      oDNA.extraLinksPrimitives.push(s);
-
-      iDNA.value = input.cloneStructure();
-      sDNA.value = new TreeNode("MULT", "MULT", node.line, [
-        initialValue ? initialValue.cloneStructure() : input.cloneStructure(),
-        period.cloneStructure()
-      ]);
-      oDNA.value = new TreeNode("DIV", "DIV", node.line, [
-        new TreeNode("[" + stockName + "]", "PRIMITIVE", node.line),
-        period.cloneStructure()
-      ]);
-
-
-      sDNA.noOutput = true;
-      iDNA.noOutput = true;
-      oDNA.noOutput = true;
-
-      sDNA.adoptUnits = true;
-      iDNA.adoptUnits = true;
-      oDNA.adoptUnits = true;
-
-      sDNA.neighborProxyDNA = primitiveDNA;
-      iDNA.neighborProxyDNA = primitiveDNA;
-      oDNA.neighborProxyDNA = primitiveDNA;
-
-      submodel.DNAs.push(sDNA);
-      submodel.DNAs.push(iDNA);
-      submodel.DNAs.push(oDNA);
-
-      return new TreeNode("[" + outflowName + "]", "PRIMITIVE", node.line);
+      parameters.order = new TreeNode("1", "INTEGER", node.position);
+      return delayGenerator(parameters, primitiveDNA, node, submodel, solvers, simulate);
     }
   },
   "delay3": {
     replacement: (parameters, primitiveDNA, node, submodel, solvers, simulate) => {
-      let {
-        input,
-        initialValue,
-        period
-      } = parameters;
-
-      let m = new Model();
-
-      let outflowName = "__Delay3 Outflow " + macroCounter++;
-
-      let stockName1 = "__Delay3 Stock " + macroCounter++;
-      let stockName2 = "__Delay3 Stock " + macroCounter++;
-      let stockName3 = "__Delay3 Stock " + macroCounter++;
-
-      let s1 = m.Stock({
-        name: stockName1,
-        initial: "(iv) || (i)"
-      });
-      s1._node.id = "" + Math.random();
-
-      let s2 = m.Stock({
-        name: stockName2,
-        initial: "(iv) || (i)"
-      });
-      s2._node.id = "" + Math.random();
-
-      let s3 = m.Stock({
-        name: stockName3,
-        initial: "(iv) || (i)"
-      });
-      s3._node.id = "" + Math.random();
-
-      let i = m.Flow(null, s1, {
-        name: "Delay3 Inflow",
-        rate: "(i)",
-        nonNegative: false
-      });
-      i._node.id = "" + Math.random();
-
-      let f1 = m.Flow(s1, s2, {
-        name: "Delay3 Flow 1",
-        rate: "(alpha) / (p/3)",
-        nonNegative: false
-      });
-      f1._node.id = "" + Math.random();
-
-      let f2 = m.Flow(s2, s3, {
-        name: "Delay3 Flow 2",
-        rate: "(alpha) / (p/3)",
-        nonNegative: false
-      });
-      f2._node.id = "" + Math.random();
-
-      let o = m.Flow(s3, null, {
-        name: outflowName,
-        rate: "(alpha) / (p/3)",
-        nonNegative: false
-      });
-      o._node.id = "" + Math.random();
-
-
-      period = new TreeNode("LINES", "LINES", node.line, [
-        // create temp variable with unitless value
-        new TreeNode("ASSIGN", "ASSIGN", node.line, [
-          new TreeNode("ASSIGNED", "ASSIGNED", node.line, [
-            new TreeNode("__tmp_macro_period", "IDENT", node.line)
-          ]),
-          new TreeNode("INNER", "INNER", node.line, [
-            new TreeNode("RemoveUnits", "IDENT", node.line),
-            new TreeNode("FUNCALL", "FUNCALL", node.line, [
-              period,
-              new TreeNode("\"" + simulate.timeUnitsString + "\"", "STRING", node.line)
-            ])
-          ])
-        ]),
-        // assert it's greater than 0
-        new TreeNode("INNER", "INNER", node.line, [
-          new TreeNode("Assert", "IDENT", node.line),
-          new TreeNode("FUNCALL", "FUNCALL", node.line, [
-            new TreeNode(">", "GT", node.line, [
-              new TreeNode("__tmp_macro_period", "IDENT", node.line),
-              new TreeNode("0", "INTEGER", node.line)
-            ]),
-            new TreeNode("\"Period for Delay3() must be greater than 0.\"", "STRING", node.line)
-          ])
-        ]),
-        // return it
-        new TreeNode("__tmp_macro_period", "IDENT", node.line)
-      ]);
-
-
-      let periodOverThree = new TreeNode("DIV", "DIV", node.line, [
-        period,
-        new TreeNode("3", "INTEGER", node.line)
-      ]);
-
-
-
-
-      let s1DNA = getDNA(s1, submodel, solvers, simulate);
-      let s2DNA = getDNA(s2, submodel, solvers, simulate);
-      let s3DNA = getDNA(s3, submodel, solvers, simulate);
-      let iDNA = getDNA(i, submodel, solvers, simulate);
-      let f1DNA = getDNA(f1, submodel, solvers, simulate);
-      let f2DNA = getDNA(f2, submodel, solvers, simulate);
-      let oDNA = getDNA(o, submodel, solvers, simulate);
-
-
-      f1DNA.extraLinksPrimitives.push(s1);
-      f2DNA.extraLinksPrimitives.push(s2);
-      oDNA.extraLinksPrimitives.push(s3);
-      primitiveDNA.extraLinksPrimitives.push(o);
-
-
-      iDNA.value = input.cloneStructure();
-      let init = new TreeNode("MULT", "MULT", node.line, [
-        initialValue ? initialValue.cloneStructure() : input.cloneStructure(),
-        periodOverThree.cloneStructure()
-      ]);
-      s1DNA.value = init.cloneStructure();
-      s2DNA.value = init.cloneStructure();
-      s3DNA.value = init.cloneStructure();
-
-      f1DNA.value = new TreeNode("DIV", "DIV", node.line, [
-        new TreeNode("[" + stockName1 + "]", "PRIMITIVE", node.line),
-        periodOverThree.cloneStructure()
-      ]);
-
-      f2DNA.value = new TreeNode("DIV", "DIV", node.line, [
-        new TreeNode("[" + stockName2 + "]", "PRIMITIVE", node.line),
-        periodOverThree.cloneStructure()
-      ]);
-
-      oDNA.value = new TreeNode("DIV", "DIV", node.line, [
-        new TreeNode("[" + stockName3 + "]", "PRIMITIVE", node.line),
-        periodOverThree.cloneStructure()
-      ]);
-
-
-      s1DNA.noOutput = true;
-      s2DNA.noOutput = true;
-      s3DNA.noOutput = true;
-      iDNA.noOutput = true;
-      f1DNA.noOutput = true;
-      f2DNA.noOutput = true;
-      oDNA.noOutput = true;
-
-      s1DNA.adoptUnits = true;
-      s2DNA.adoptUnits = true;
-      s3DNA.adoptUnits = true;
-      iDNA.adoptUnits = true;
-      f1DNA.adoptUnits = true;
-      f2DNA.adoptUnits = true;
-      oDNA.adoptUnits = true;
-
-      s1DNA.neighborProxyDNA = primitiveDNA;
-      s2DNA.neighborProxyDNA = primitiveDNA;
-      s3DNA.neighborProxyDNA = primitiveDNA;
-      iDNA.neighborProxyDNA = primitiveDNA;
-      f1DNA.neighborProxyDNA = primitiveDNA;
-      f2DNA.neighborProxyDNA = primitiveDNA;
-      oDNA.neighborProxyDNA = primitiveDNA;
-
-      submodel.DNAs.push(s1DNA);
-      submodel.DNAs.push(s2DNA);
-      submodel.DNAs.push(s3DNA);
-      submodel.DNAs.push(iDNA);
-      submodel.DNAs.push(f1DNA);
-      submodel.DNAs.push(f2DNA);
-      submodel.DNAs.push(oDNA);
-
-      return new TreeNode("[" + outflowName + "]", "PRIMITIVE", node.line);
+      parameters.order = new TreeNode("3", "INTEGER", node.position);
+      return delayGenerator(parameters, primitiveDNA, node, submodel, solvers, simulate);
     }
+  },
+  "delayn": {
+    replacement: (...params) => delayGenerator(...params)
   }
-
 };
 
 
@@ -2498,7 +2509,9 @@ const MACRO_FNS = {
  * @returns
  */
 function getMacroParameters(children, name, assigns) {
-  if (children.length > 3 || children.length < 2) {
+  let requiresOrder = name.toLowerCase().endsWith("n");
+
+  if (children.length > 3 + (requiresOrder ? 1 : 0) || children.length < 2 + (requiresOrder ? 1 : 0) ) {
     throw new ModelError(`Wrong number of parameters for ${name}().`, {
       code: 10001
     });
@@ -2530,7 +2543,8 @@ function getMacroParameters(children, name, assigns) {
   return {
     input: children[0],
     period: children[1],
-    initialValue: children[2]
+    order: requiresOrder ? children[2] : null,
+    initialValue: requiresOrder ? children[3] : children[2]
   };
 }
 

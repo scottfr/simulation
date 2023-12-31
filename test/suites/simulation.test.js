@@ -988,6 +988,44 @@ describe.each([
     });
 
 
+    test("Local scopes", () => {
+      let m = new Model({ algorithm });
+
+
+      let a = m.Variable({
+        name: "a",
+        value: "x <- 9\n[b]+5\nx"
+      });
+      let b = m.Variable({
+        name: "b",
+        value: "x <- 2"
+      });
+
+      m.Link(b, a);
+
+      let res = m.simulate();
+      expect(res.series(a)[1]).toBe(9);
+      expect(res.series(b)[1]).toBe(2);
+
+      // reverse variable evaluation order
+      m = new Model({ algorithm });
+      b = m.Variable({
+        name: "b",
+        value: "x <- 2"
+      });
+      a = m.Variable({
+        name: "a",
+        value: "x <- 9\n[b]+5\nx"
+      });
+
+      m.Link(b, a);
+
+      res = m.simulate();
+      expect(res.series(a)[1]).toBe(9);
+      expect(res.series(b)[1]).toBe(2);
+    });
+
+
     test("Multiple non-negative stocks", () => {
       let m = new Model({ algorithm });
 
@@ -1422,7 +1460,7 @@ describe.each([
       p.value = "\"a\"";
       p2.value = "ceiling([my variable 1])";
 
-      expect(() => m.simulate()).toThrow(/requires a number for the parameter/);
+      expect(() => m.simulate()).toThrow(/does not accept string values/);
     });
 
 
@@ -2038,7 +2076,7 @@ describe.each([
 
       expect(m.simulate().value(f, 0)).toBe(100);
 
-      // wit initial value
+      // with initial value
       f.rate = "Smooth(100, 1, 50)";
       expect(m.simulate().value(f, 0)).toBe(50);
 
@@ -2050,6 +2088,31 @@ describe.each([
 
       // delay3
       f.rate = "Delay3(100, 1)";
+      expect(m.simulate().value(f, 0)).toBe(100);
+    });
+
+
+    test("SSDN as flow rate", () => {
+      let m = new Model({ algorithm });
+
+      let f = m.Flow(null, null, {
+        rate: "SmoothN(100, 1, 1)"
+      });
+
+      expect(m.simulate().value(f, 0)).toBe(100);
+
+      // with initial value
+      f.rate = "SmoothN(100, 1, 1, 50)";
+      expect(m.simulate().value(f, 0)).toBe(50);
+
+
+      // delay1
+      f.rate = "DelayN(100, 1, 1)";
+      expect(m.simulate().value(f, 0)).toBe(100);
+
+
+      // delay3
+      f.rate = "DelayN(100, 1, 3)";
       expect(m.simulate().value(f, 0)).toBe(100);
     });
 
@@ -2107,7 +2170,43 @@ describe.each([
         expect(res.series(p2)[40].toFixed(8)).toBe("6.62882024");
       }
 
+      p2.value = "SmoothN([My Param], 5.6, 1, 2.3)";
+
+      res = m.simulate();
+      expect(res.series(p2)[0]).toBe(2.3);
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[20].toFixed(8)).toBe("0.04499082");
+        expect(res.series(p2)[40].toFixed(8)).toBe("6.72951127");
+      } else {
+        expect(res.series(p2)[20].toFixed(8)).toBe("0.06466829");
+        expect(res.series(p2)[40].toFixed(8)).toBe("6.62882024");
+      }
+
+
+      p2.value = "SmoothN([My Param], 5.6, 3, 2.3)";
+      res = m.simulate();
+      expect(res.series(p2)[0]).toBe(2.3);
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[20].toFixed(8)).toBe("0.00013803");
+        expect(res.series(p2)[40].toFixed(8)).toBe("7.08872876");
+      } else {
+        expect(res.series(p2)[20].toFixed(8)).toBe("0.00354323");
+        expect(res.series(p2)[40].toFixed(8)).toBe("7.01157193");
+      }
+
       p2.value = "[My Param].Smooth(8.4, 3.2)";
+      res = m.simulate();
+      expect(res.series(p2)[0]).toBe(3.2);
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[20].toFixed(8)).toBe("0.25362885");
+        expect(res.series(p2)[40].toFixed(8)).toBe("6.05951890");
+      } else {
+        expect(res.series(p2)[20].toFixed(8)).toBe("0.29588123");
+        expect(res.series(p2)[40].toFixed(8)).toBe("5.96046691");
+      }
+
+
+      p2.value = "[My Param].SmoothN(8.4, 1, 3.2)";
       res = m.simulate();
       expect(res.series(p2)[0]).toBe(3.2);
       if (algorithm === "Euler") {
@@ -2177,6 +2276,23 @@ describe.each([
         expect(res.series(p2)[10].toFixed(8)).toBe("8.91626084");
         expect(res.series(p2)[20].toFixed(8)).toBe("9.88255094");
       }
+
+      p2.value = "SmoothN([My Param] / 2 * 2, 4.5, 1, 0)";
+      res = m.simulate();
+      expect(res.series(p2)[0]).toBe(0);
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[5].toFixed(8)).toBe("7.15371979");
+        expect(res.series(p2)[10].toFixed(8)).toBe("9.18986890");
+        expect(res.series(p2)[20].toFixed(8)).toBe("9.93436876");
+      } else {
+        expect(res.series(p2)[5].toFixed(8)).toBe("6.70798062");
+        expect(res.series(p2)[10].toFixed(8)).toBe("8.91626084");
+        expect(res.series(p2)[20].toFixed(8)).toBe("9.88255094");
+      }
+
+
+      p2.value = "SmoothN([My Param] / 2 * 2, 4.5, 1.5, 0)";
+      expect(() => m.simulate()).toThrow(/order must be/);
     });
 
 
@@ -2238,7 +2354,55 @@ describe.each([
         expect(res.series(out)[30].toFixed(8)).toBe("1.87018349");
       }
 
+      out.value = "[input].DelayN(40, 3, 3)";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(out)[0]).toBe(3);
+        expect(res.series(out)[10].toFixed(8)).toBe("2.89821360");
+        expect(res.series(out)[20].toFixed(8)).toBe("2.44200406");
+        expect(res.series(out)[30].toFixed(8)).toBe("1.85436162");
+      } else if (algorithm === "RK4") {
+        expect(res.series(out)[0]).toBe(3);
+        expect(res.series(out)[10].toFixed(8)).toBe("2.87848472");
+        expect(res.series(out)[20].toFixed(8)).toBe("2.42654085");
+        expect(res.series(out)[30].toFixed(8)).toBe("1.87018349");
+      }
+
+
+      // 7th order delay
+      out.value = "[input].DelayN(40, 7, 3)";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(out)[0]).toBe(3);
+        expect(res.series(out)[10].toFixed(8)).toBe("2.99889920");
+        expect(res.series(out)[20].toFixed(8)).toBe("2.85905304");
+        expect(res.series(out)[30].toFixed(8)).toBe("2.21092561");
+      } else {
+        expect(res.series(out)[10].toFixed(8)).toBe("2.99339520");
+        expect(res.series(out)[20].toFixed(8)).toBe("2.80413553");
+        expect(res.series(out)[30].toFixed(8)).toBe("2.17677862");
+      }
+
+
+      out.value = "[input].DelayN(40, -3, 3)";
+      expect(() => m.simulate()).toThrow(/order must be/);
+
       out.value = "Delay1([input], 40, 2)";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(out)[0]).toBe(2);
+        expect(res.series(out)[10].toFixed(8)).toBe("1.55265924");
+        expect(res.series(out)[20].toFixed(8)).toBe("1.20537536");
+        expect(res.series(out)[30].toFixed(8)).toBe("1.15943898");
+      } else if (algorithm === "RK4") {
+        expect(res.series(out)[0]).toBe(2);
+        expect(res.series(out)[10].toFixed(8)).toBe("1.55760157");
+        expect(res.series(out)[20].toFixed(8)).toBe("1.21722799");
+        expect(res.series(out)[30].toFixed(8)).toBe("1.16917733");
+      }
+
+
+      out.value = "DelayN([input], 40, 1, 2)";
       res = m.simulate();
       if (algorithm === "Euler") {
         expect(res.series(out)[0]).toBe(2);
@@ -2673,6 +2837,224 @@ describe.each([
     });
 
 
+    test("Delay with unnamed vector", () => {
+      let m = new Model({ algorithm });
+
+
+      let p = m.Variable({
+        name: "x"
+      });
+      let p2 = m.Variable({
+        name: "y"
+      });
+      m.Link(p, p2);
+      p.value = "{1,4,9}";
+      p2.value = "Delay([x], {3 Years}, {0, 0, 0})";
+
+
+      let res = m.simulate();
+      expect(res.series(p2)[1]).toEqual([0,0,0]);
+      expect(res.series(p2)[5]).toEqual([1,4,9]);
+    });
+
+
+    test("Delays with named and vector", () => {
+      let m = new Model({ algorithm });
+
+
+      let p = m.Variable({
+        name: "x"
+      });
+      let p2 = m.Variable({
+        name: "y"
+      });
+      m.Link(p, p2);
+      p.value = "{a: years, b: years}";
+      p2.value = "Delay([x], {a: 2, b: 5})";
+
+
+      let res = m.simulate();
+      expect(res.series(p2)[1]).toEqual({a: 0, b: 0});
+      expect(res.series(p2)[9]).toEqual({a: 7, b: 4});
+
+      p2.value = "Delay([x], {a: 2, b: 5}, {a: 1.5, b: 3.5})";
+      res = m.simulate();
+      expect(res.series(p2)[1]).toEqual({a: 1.5, b: 3.5});
+      expect(res.series(p2)[9]).toEqual({a: 7, b: 4});
+
+      p2.value = "Delay([x], {a: 2, b: 5}, {c: 1.5, b: 3.5})";
+      expect(() => m.simulate()).toThrow(/Vector keys do not match/);
+
+      p2.value = "Delay([x], {a: 2, c: 5})";
+      expect(() => m.simulate()).toThrow(/Vector keys do not match/);
+
+      p2.value = "Delay([x], {1, 2})";
+      expect(() => m.simulate()).toThrow(/does not accepted non-named vectors/);
+
+
+      p2.value = "Delay1([x], {a: 3, b: 6})";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[1].a).toBeGreaterThanOrEqual(res.series(p2)[1].b);
+      } else {
+        expect(res.series(p2)[1].a).toBeGreaterThan(res.series(p2)[1].b);
+      }
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+
+      p2.value = "Delay1([x], {a: 2, b: 5}, {c: 1.5, b: 3.5})";
+      expect(() => m.simulate()).toThrow(/Keys do not match for vector operation/);
+
+      p2.value = "Delay1([x], {a: 2, c: 5})";
+      expect(() => m.simulate()).toThrow(/Keys do not match for vector operation/);
+
+      p2.value = "Delay1([x], {1, 2})";
+      expect(() => m.simulate()).toThrow(/does not accepted non-named vectors/);
+
+      p2.value = "Delay1([x], {a: -3, b: 6})";
+      expect(() => m.simulate()).toThrow(/must be greater than/);
+      
+
+      p2.value = "Delay1([x], {a: 3, b: 6}, {a: -1, b: -1})";
+      res = m.simulate();
+      expect(res.series(p2)[1].a).toBeGreaterThan(res.series(p2)[1].b);
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+
+      p2.value = "Delay1([x], {a: 3, b: 6}, {a: 2, b: 2})";
+      res = m.simulate();
+      expect(res.series(p2)[1].a).toBeLessThan(res.series(p2)[1].b);
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+
+
+      p2.value = "Delay3([x], {a: 3, b: 6})";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[1].a).toBeGreaterThanOrEqual(res.series(p2)[1].b);
+      } else {
+        expect(res.series(p2)[1].a).toBeGreaterThan(res.series(p2)[1].b);
+      }
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+      
+      p2.value = "Delay3([x], {a: 3, b: 6}, {a: -1, b: -1})";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[1].a).toBeGreaterThanOrEqual(res.series(p2)[1].b);
+      } else {
+        expect(res.series(p2)[1].a).toBeGreaterThan(res.series(p2)[1].b);
+      }
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+
+      p2.value = "Delay3([x], {a: 3, b: 6}, {a: 2, b: 2})";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[1].a).toBeLessThanOrEqual(res.series(p2)[1].b);
+      } else {
+        expect(res.series(p2)[1].a).toBeLessThan(res.series(p2)[1].b);
+      }
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+
+
+      p2.value = "Smooth([x], {a: 3, b: 6})";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[1].a).toBeGreaterThanOrEqual(res.series(p2)[1].b);
+      } else {
+        expect(res.series(p2)[1].a).toBeGreaterThan(res.series(p2)[1].b);
+      }
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+
+
+      p2.value = "Smooth([x], {a: 2, b: 5}, {c: 1.5, b: 3.5})";
+      expect(() => m.simulate()).toThrow(/Keys do not match for vector operation/);
+
+      p2.value = "Smooth([x], {a: 2, c: 5})";
+      expect(() => m.simulate()).toThrow(/Keys do not match for vector operation/);
+
+      p2.value = "Smooth([x], {1, 2})";
+      expect(() => m.simulate()).toThrow(/does not accepted non-named vectors/);
+
+      p2.value = "Smooth([x], {a: 3, b: -6})";
+      expect(() => m.simulate()).toThrow(/must be greater than/);
+
+
+      p2.value = "Smooth([x], {a: 3, b: 6}, {a: -1, b: -1})";
+      res = m.simulate();
+      expect(res.series(p2)[1].a).toBeGreaterThan(res.series(p2)[1].b);
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+
+      p2.value = "Smooth([x], {a: 3, b: 6}, {a: 2, b: 2})";
+      res = m.simulate();
+      expect(res.series(p2)[1].a).toBeLessThan(res.series(p2)[1].b);
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+
+
+      p2.value = "SmoothN([x], {a: 3, b: 6}, 3, {a: -1, b: -1})";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[1].a).toBeGreaterThanOrEqual(res.series(p2)[1].b);
+      } else {
+        expect(res.series(p2)[1].a).toBeGreaterThan(res.series(p2)[1].b);
+      }
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+
+      p2.value = "SmoothN([x], {a: 3, b: 6}, 3, {a: 2, b: 2})";
+      res = m.simulate();
+      if (algorithm === "Euler") {
+        expect(res.series(p2)[1].a).toBeLessThanOrEqual(res.series(p2)[1].b);
+      } else {
+        expect(res.series(p2)[1].a).toBeLessThan(res.series(p2)[1].b);
+      }
+      expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
+    });
+
+
+    test("Simulation precision", () => {
+      let m = new Model({ algorithm });
+      m.timeStep = 0.0625;
+      m.timeLength = 1;
+      m.timeUnits = "Months";
+
+      let s = m.Stock({
+        name: "x",
+        initial: 100,
+        units: "things"
+      });
+
+      let v = m.Variable({
+        name: "v",
+        value: "[x] = {0 things}",
+      });
+
+      let f = m.Flow(s, null, {
+        rate: 100,
+        units: "things/months"
+      });
+
+      m.Link(s, v);
+
+      let res = m.simulate();
+      expect(res.series(v)[0]).toEqual(0);
+      expect(res.series(v)[1]).toEqual(0);
+      expect(res.series(v)[2]).toEqual(0);
+      expect(res.series(v)[3]).toEqual(0);
+      expect(res.series(v)[4]).toEqual(0);
+      expect(res.series(v)[5]).toEqual(0);
+      expect(res.series(v)[res.series(v).length - 2]).toEqual(0);
+      expect(res.series(v)[res.series(v).length - 1]).toEqual(1);
+
+      f.units = "things/month";
+
+      res = m.simulate();
+      expect(res.series(v)[0]).toEqual(0);
+      expect(res.series(v)[1]).toEqual(0);
+      expect(res.series(v)[2]).toEqual(0);
+      expect(res.series(v)[3]).toEqual(0);
+      expect(res.series(v)[4]).toEqual(0);
+      expect(res.series(v)[5]).toEqual(0);
+      expect(res.series(v)[res.series(v).length - 2]).toEqual(0);
+      expect(res.series(v)[res.series(v).length - 1]).toEqual(1);
+    });
+
+
     test("Units and Variables", () => {
       let m = new Model({ algorithm });
       m.timeLength = 100;
@@ -2704,6 +3086,72 @@ describe.each([
     });
 
 
+    test("Assigned units", () => {
+      let m = new Model({ algorithm });
+      m.timeLength = 100;
+
+
+      let p1 = m.Variable({
+        name: "x1"
+      });
+      let p2 = m.Variable({
+        name: "x2"
+      });
+      m.Link(p1, p2);
+
+      p1.units = "Days";
+      p2.units = "Days";
+      p1.value = "Days()";
+      p2.value = "round([x1])";
+      let res = m.simulate();
+
+      expect(res.series(p2)[50]).toBe(res.series(p1)[50]);
+    });
+
+
+    test("Assigned units and flows/stocks", () => {
+      let m = new Model({ algorithm });
+      m.timeLength = 100;
+
+
+      let y = m.Variable({
+        name: "y",
+        units: "meters",
+        value: "round([x])"
+      });
+      let x = m.Stock({
+        name: "x",
+        units: "meters"
+      });
+      m.Link(x, y);
+      m.Flow(null, x, {
+        rate: "{1 miles/years}",
+        units: "miles/years"
+      });
+
+      let res = m.simulate();
+
+      expect(Math.round(res.series(x)[50])).toBe(res.series(y)[50]);
+    });
+
+
+    test("Deepunitless to unitless conversion", () => {
+      let m = new Model({ algorithm });
+      m.timeLength = 100;
+
+
+      let p1 = m.Variable({
+        name: "x1"
+      });
+
+      p1.units = "Unitless";
+      p1.value = "{3 years/months}";
+      let res = m.simulate();
+
+      expect(res.series(p1)[50]).toBe(36);
+    });
+
+    
     test("Smoothing and units", () => {
       let m = new Model({ algorithm });
 

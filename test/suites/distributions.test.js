@@ -116,6 +116,16 @@ test("Random number generation", () => {
   check("round(mean(repeat(randBeta(1, 2), 20000))*10)", Math.round((1/(1+2/1))*10));
   check("round(mean(repeat(randBeta(2, 1), 20000))*10)", Math.round((1/(1+1/2))*10));
 
+
+  check("round(mean(repeat(randnormal({a: 0, b:10}, {a: .1, b: .2}){\"a\"}, 10000))*10)", 0);
+  check("round(mean(repeat(randnormal({a: 0, b:10}, .1){\"b\"}, 10000))*10)", 100);
+  check("round(mean(repeat(randnormal(10, {a: .1, b: .2}){\"b\"}, 10000))*10)", 100);
+  check("round(mean(repeat(randnormal({a: 0, b:10}, {a: .1, b: .2}){\"b\"}, 10000))*10)", 100);
+  // mismatched keys
+  failure("randnormal({a: 0, b:10}, {x: .1, y: .2})", "Vector keys do not match between parameters");
+  // non-named vectors
+  failure("randnormal(1, {1, 2, 3})", "does not accepted non-named vectors");
+
   testConfig.globals = "";
 });
 

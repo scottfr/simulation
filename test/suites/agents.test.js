@@ -303,6 +303,11 @@ describe.each([
       expect(res.series(s)[0]).toBe(0);
       expect(res.series(v)[0]).toBe(0);
 
+      v.value = "if[State]then\n 1\nelse\n 0\nend if";
+      res = m.simulate();
+      expect(res.series(s)[0]).toBe(0);
+      expect(res.series(v)[0]).toBe(0);
+
       s.startActive = "true";
       res = m.simulate();
       expect(res.series(s)[5]).toBe(1);
@@ -995,9 +1000,28 @@ describe.each([
       expect(res.series(v)[8]).toBe(12);
 
       mover.action = "[Population].add()";
+      res = m.simulate();
       expect(res.series(v)[0]).toBe(10);
       expect(res.series(v)[4]).toBe(11);
       expect(res.series(v)[8]).toBe(12);
+
+
+      let inPrim = f.Variable({
+        name: "inprim"
+      });
+      one.value = "1";
+      m.Link(inPrim, mover);
+
+      mover.action = "[inPrim].add()";
+      res = m.simulate();
+      expect(res.series(v)[0]).toBe(10);
+      expect(res.series(v)[4]).toBe(11);
+      expect(res.series(v)[8]).toBe(12);
+
+
+      // outside the folder should error
+      mover.action = "[one].add()";
+      expect(() => m.simulate()).toThrow(/You must pass an agent population as the first argument to Add/);
 
       mover.value = "((index(self)==3 && years==2) || (index(self)==5 && years==5))";
       mover.action = "add([Population], Self)";
@@ -1373,7 +1397,7 @@ describe.each([
 
       m.globals = "setRandSeed(1234)";
       let res3 = m.simulate(); // no error
-      expect(areResultsDifferent(res._data, res3._data)).toBeTruthy;
+      expect(areResultsDifferent(res._data, res3._data)).toBeTruthy();
 
 
       m.globals = "setRandSeed(123)";

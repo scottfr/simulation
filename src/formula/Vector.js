@@ -3,6 +3,18 @@ import { Material } from "./Material.js";
 import { ModelError } from "./ModelError.js";
 import { selectFromMatrix, strictEquals } from "./Utilities.js";
 
+/**
+ * Truncates to max length adding ellipsis if truncated. If text is only 2 or fewer characters longer than maxLength, it will not be truncated.
+ * 
+ * @param {string} string
+ * @param {number} maxLength
+ */
+function truncate(string, maxLength) {
+  if (string.length > maxLength + 2) {
+    return string.substring(0, maxLength - 3) + "...";
+  }
+  return string;
+}
 
 /**
  * @param {string[]} thisNames
@@ -52,11 +64,15 @@ export class Vector {
   constructor(items, simulate, names, parent) {
     this.simulate = simulate;
 
-    this.parent = parent ? parent : simulate.varBank["vectorbase"];
+    this.parent = parent ? parent : simulate.varBank.get("vectorbase");
     this.items = items;
+    /** @type {string[]} */
     this.names = names;
+    /** @type {string[]} */
     this.namesLC = undefined;
+    /** @type {boolean} */
     this.isNum = undefined;
+    /** @type {boolean} */
     this.terminateApply = undefined;
 
     if (names) {
@@ -117,14 +133,14 @@ export class Vector {
 
   combine(other, operation, rhs, noSwitch) {
     if (other instanceof Vector) {
-      if (this.length() !== other.length() && !this.names && !other.names) {
-        throw new ModelError("Vectors must have equal length when combined.", {
+      if (this.length() !== other.length() && (!this.names || !other.names)) {
+        throw new ModelError(`Vectors must have equal length when combined. Got lengths of ${this.length()} and ${other.length()}.`, {
           code: 2001
         });
       }
     }
 
-    if (other instanceof Vector && this.names && other.names) {
+    if (other instanceof Vector && (this.names && other.names)) {
       if (!noSwitch && other.depth() > this.depth()) {
         return other.combine(this, operation, !rhs);
       }
@@ -135,7 +151,7 @@ export class Vector {
           }
           return this;
         } else {
-          throw new ModelError("Keys do not match for vector operation.", {
+          throw new ModelError(`Keys do not match for vector operation. Got keys {${truncate(this.names.map(x => "\"" + x +"\"").join(", "), 36)}} and {${truncate(other.names.map(x => "\"" + x +"\"").join(", "), 36)}}.`, {
             code: 2000
           });
         }
@@ -209,7 +225,7 @@ export class Vector {
         for (let i = 0; i < this.depth(); i++) {
           if (!(targetLevel instanceof Vector)) {
             selector.push((x) => {
-              return this.simulate.varBank["sum"](x[0].items);
+              return this.simulate.varBank.get("sum")(x[0].items);
             });
             base = /** @type {Vector} */ (base.items[0]);
           } else if ((base.namesLC === undefined && targetLevel.namesLC === undefined) || (base.namesLC !== undefined && targetLevel.namesLC !== undefined && keysMatch(base.namesLC, targetLevel.namesLC))) {
@@ -218,7 +234,7 @@ export class Vector {
             targetLevel =  /** @type {Vector} */ (targetLevel.items[0]);
           } else {
             selector.push((x) => {
-              return this.simulate.varBank["sum"](x[0].items);
+              return this.simulate.varBank.get("sum")(x[0].items);
             });
 
             base =  /** @type {Vector} */ (base.items[0]);
@@ -232,7 +248,7 @@ export class Vector {
         return selectFromMatrix(this, this.simulate, selector);
       }
     } else {
-      return this.simulate.varBank["sum"]([this.simulate.varBank["flatten"]([this])]);
+      return this.simulate.varBank.get("sum")([this.simulate.varBank.get("flatten")([this])]);
     }
   }
 
@@ -250,8 +266,11 @@ export class Vector {
     return 1;
   }
 
+  /**
+   * @param {string[]} keys
+   */
   keysMatch(keys) {
-    if (this.names) {
+    if (this.names && keys) {
       return keysMatch(this.namesLC, keys);
     }
     return false;

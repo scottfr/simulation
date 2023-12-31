@@ -16,7 +16,7 @@ export function stringify(x, simulate) {
   // eslint-disable-next-line
   let res = new String(x);
   // @ts-ignore
-  res.parent = simulate.varBank["stringbase"];
+  res.parent = simulate.varBank.get("stringbase");
   return res;
 }
 

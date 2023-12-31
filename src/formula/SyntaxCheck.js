@@ -1,29 +1,55 @@
-import { org } from "../../vendor/antlr3-all.js";
-import { FormulaLexer } from "./grammar/FormulaLexer.js";
-import { FormulaParser } from "./grammar/FormulaParser.js";
+import antlr from "../../vendor/antlr4-all.js";
+import FormulaLexer from "./grammar/FormulaLexer.js";
+import FormulaParser from "./grammar/FormulaParser.js";
 
 
 export function isValidSyntax(input) {
-  let cstream = new org.antlr.runtime.ANTLRStringStream(input);
-  let lexer = new FormulaLexer(cstream);
-  let tstream = new org.antlr.runtime.CommonTokenStream(lexer);
-  let parser = new FormulaParser(tstream);
-  
-  try {
-    // @ts-ignore
-    parser.lines();
+  let error = /** @type {any} */ (null);
 
-    // @ts-ignore
-    let errorIndex = parser.state.lastErrorIndex;
-    if (errorIndex > -1) {
-    // @ts-ignore
-      let token = parser.input.tokens[errorIndex];
+  const chars = new antlr.InputStream(input);
+  const lexer = new FormulaLexer(chars);
+
+  lexer.removeErrorListeners();
+  lexer.addErrorListener({
+    syntaxError: (recognizer, offendingSymbol, line, column, msg, err) => {
+      error = {
+        line,
+        column
+      };
+    }
+  });
+  const tokens = new antlr.CommonTokenStream(lexer);
+  const parser = new FormulaParser(tokens);
+  parser.removeErrorListeners();
+  parser.addErrorListener({
+    syntaxError: (recognizer, offendingSymbol, line, column, msg, err) => {
+      error = {
+        line,
+        column
+      };
+    },
+    reportAttemptingFullContext: (...args) => {
+      // console.log("reportAttemptingFullContext", args);
+    },
+    reportAmbiguity: (...args) => {
+      // console.log("reportAmbiguity", args);
+    },
+    reportContextSensitivity: (...args) => {
+      // console.log("reportContextSensitivity", args);
+    }
+  });
+
+  try {
+    if (!error) {
+      parser.lines();
+    }
+   
+    if (error) {
       return {
         error: true,
-        token: token ? {
-          start: token.start,
-          stop: token.stop + 1
-        } : null
+        line: error.line,
+        char: error.column,
+        token: error.token
       };
     }
   } catch (_err) {

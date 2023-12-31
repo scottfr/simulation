@@ -142,7 +142,7 @@ export function createFunctions(simulate) {
         peak.units = simulate.timeUnits;
       }
     }
-    let position = minus(/** @type {Material} */(simulate.varBank.time([])), peak);
+    let position = minus(/** @type {Material} */(simulate.varBank.get("time")([])), peak);
     let dist = position.forceUnits(createUnitStore("years", simulate)).value * 2 * 3.14159265359;
     return new Material(Math.cos(dist));
   });
@@ -152,7 +152,7 @@ export function createFunctions(simulate) {
   });
 
 
-  defineFunction(simulate, "RemoveUnits", { params: [{ name: "Value", noVector: true }, { name: "ExpectedUnits", needString: true }] }, (x) => {
+  defineFunction(simulate, "RemoveUnits", { params: [{ name: "Value", vectorize: true }, { name: "ExpectedUnits", needString: true }] }, (x) => {
     let m = toNum(x[0]);
     return new Material(m.forceUnits(createUnitStore(x[1], simulate)).value);
   });
@@ -160,18 +160,18 @@ export function createFunctions(simulate) {
 
   defineFunction(simulate, "PastMean", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Past Range", defaultVal: "All Time", vectorize: true }] }, (x) => {
     if (x.length === 1) {
-      return simulate.varBank["mean"](x[0].getPastValues());
+      return simulate.varBank.get("mean")(x[0].getPastValues());
     } else {
-      return simulate.varBank["mean"](x[0].getPastValues(toNum(x[1])));
+      return simulate.varBank.get("mean")(x[0].getPastValues(toNum(x[1])));
     }
   });
 
   defineFunction(simulate, "PastMedian", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Past Range", defaultVal: "All Time", vectorize: true }] }, (x) => {
 
     if (x.length === 1) {
-      return simulate.varBank["median"](x[0].getPastValues());
+      return simulate.varBank.get("median")(x[0].getPastValues());
     } else {
-      return simulate.varBank["median"](x[0].getPastValues(toNum(x[1])));
+      return simulate.varBank.get("median")(x[0].getPastValues(toNum(x[1])));
     }
   });
 
@@ -195,7 +195,7 @@ export function createFunctions(simulate) {
       items = x[0].getPastValues(toNum(x[1]));
     }
     if (items.length > 1) {
-      return simulate.varBank["stddev"](items);
+      return simulate.varBank.get("stddev")(items);
     } else {
       return new Material(0);
     }
@@ -213,7 +213,7 @@ export function createFunctions(simulate) {
     }
 
     if (items1.length > 1) {
-      return simulate.varBank["correlation"]([new Vector(items1, simulate), new Vector(items2, simulate)]);
+      return simulate.varBank.get("correlation")([new Vector(items1, simulate), new Vector(items2, simulate)]);
     } else {
       return new Material(0);
     }
@@ -222,18 +222,18 @@ export function createFunctions(simulate) {
   defineFunction(simulate, "PastMax", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Past Range", defaultVal: "All Time", vectorize: true }] }, (x) => {
 
     if (x.length === 1) {
-      return simulate.varBank["max"](x[0].getPastValues());
+      return simulate.varBank.get("max")(x[0].getPastValues());
     } else {
-      return simulate.varBank["max"](x[0].getPastValues(toNum(x[1])));
+      return simulate.varBank.get("max")(x[0].getPastValues(toNum(x[1])));
     }
   });
 
   defineFunction(simulate, "PastMin", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Past Range", defaultVal: "All Time", vectorize: true }] }, (x) => {
 
     if (x.length === 1) {
-      return simulate.varBank["min"](x[0].getPastValues());
+      return simulate.varBank.get("min")(x[0].getPastValues());
     } else {
-      return simulate.varBank["min"](x[0].getPastValues(toNum(x[1])));
+      return simulate.varBank.get("min")(x[0].getPastValues(toNum(x[1])));
     }
   });
 
@@ -274,9 +274,9 @@ export function createFunctions(simulate) {
           return height;
         }
       } else if (greaterThanEq(simulate.time(), start)) {
-        let x = minus(simulate.time(), mult(simulate.varBank["floor"]([div(minus(simulate.time(), start), repeat)]), repeat));
+        let x = minus(simulate.time(), mult(simulate.varBank.get("floor")([div(minus(simulate.time(), start), repeat)]), repeat));
         let dv = minus(simulate.time(), start);
-        if (minus(/** @type {Material} */(simulate.varBank.round([div(dv, repeat)])), div(dv, repeat)).value === 0 || (greaterThanEq(x, start) && lessThanEq(x, plus(start, width)))) {
+        if (minus(/** @type {Material} */(simulate.varBank.get("round")([div(dv, repeat)])), div(dv, repeat)).value === 0 || (greaterThanEq(x, start) && lessThanEq(x, plus(start, width)))) {
           return height;
         }
       }
@@ -303,7 +303,7 @@ export function createFunctions(simulate) {
         finish.units = simulate.timeUnits;
       }
       if (greaterThanEq(simulate.time(), start)) {
-        let q = div(mult(simulate.varBank["min"]([minus(finish, start), minus(simulate.time(), start)]), height), minus(finish, start));
+        let q = div(mult(simulate.varBank.get("min")([minus(finish, start), minus(simulate.time(), start)]), height), minus(finish, start));
         return q;
       }
       return new Material(0, height.units);
@@ -329,9 +329,9 @@ export function createFunctions(simulate) {
 
       return new Material(0, height.units);
     });
-  simulate.varBank["staircase"] = simulate.varBank["step"];
+  simulate.varBank.set("staircase", simulate.varBank.get("step"));
 
-  defineFunction(simulate, "Delay", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Delay", vectorize: true }, { name: "Initial Value", defaultVal: "None", vectorize: true }] },
+  defineFunction(simulate, "Delay", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Delay", vectorize: true }, { name: "Initial Value", defaultVal: "None" }] },
     /**
      * @param {[SPrimitive, Material, ValueType?]} x
      *
@@ -351,30 +351,58 @@ export function createFunctions(simulate) {
       }
     });
 
-  defineFunction(simulate, "Smooth", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "Expression", noVector: true }, { name: "Period", vectorize: true }, { name: "Initial Value", vectorize: true, defaultVal: "None" }] },
+  // TODO: consider vectoring the delay/period for DelayN and smoothN
+
+  defineFunction(simulate, "Smooth", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "Expression", noVector: true }, { name: "Period", vectorize: true, needNum: true }, { name: "Initial Value", defaultVal: "None" }] },
     (_x) => {
       throw new ModelError("Smooth() may only be called in a top level primitive equation", {
         code: 1052
       });
     });
 
-  defineFunction(simulate, "Delay1", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "Expression", noVector: true }, { name: "Delay", vectorize: true }, { name: "Initial Value", vectorize: true, defaultVal: "None" }] },
+
+  defineFunction(simulate, "SmoothN", { object: [simulate.varBank, PrimitiveObject], params: [
+    { name: "Expression", noVector: true },
+    { name: "Period", vectorize: true, needNum: true }, 
+    { name: "Order", noUnits: true, noVector: true, needNum: true },
+    { name: "Initial Value", defaultVal: "None" }
+  ] },
+  (_x) => {
+    throw new ModelError("SmoothN() may only be called in a top level primitive equation", {
+      code: 1052
+    });
+  });
+
+  defineFunction(simulate, "Delay1", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "Expression", noVector: true }, { name: "Delay", vectorize: true, needNum: true }, { name: "Initial Value", defaultVal: "None" }] },
     (_x) => {
       throw new ModelError("Delay1() may only be called in a top level primitive equation", {
         code: 1053
       });
     });
 
-  defineFunction(simulate, "Delay3", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "Expression", noVector: true }, { name: "Delay", vectorize: true }, { name: "Initial Value", vectorize: true, defaultVal: "None" }] },
+  defineFunction(simulate, "Delay3", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "Expression", noVector: true }, { name: "Delay", vectorize: true, needNum: true }, { name: "Initial Value", defaultVal: "None" }] },
     (_x) => {
       throw new ModelError("Delay3() may only be called in a top level primitive equation", {
         code: 1054
       });
     });
 
+  
+  defineFunction(simulate, "DelayN", { object: [simulate.varBank, PrimitiveObject], params: [
+    { name: "Expression", noVector: true },
+    { name: "Delay", vectorize: true, needNum: true },
+    { name: "Order", noUnits: true, noVector: true, needNum: true },
+    { name: "Initial Value", defaultVal: "None" }
+  ] },
+  (_x) => {
+    throw new ModelError("DelayN() may only be called in a top level primitive equation", {
+      code: 1055
+    });
+  });
 
 
-  simulate.varBank["fix"] = function (x, id,) {
+
+  simulate.varBank.set("fix", function (x, id,) {
     testArgumentsSize(x, "Fix", 1, 2);
     /** @type {number|Material} */
     let spacing = -1;
@@ -396,11 +424,11 @@ export function createFunctions(simulate) {
     }
 
     return mySeries.get(x[0]);
-  };
-  simulate.varBank["fix"].delayEvalParams = true;
+  });
+  simulate.varBank.get("fix").delayEvalParams = true;
 
 
-  simulate.varBank["populationsize"] = function (x) {
+  simulate.varBank.set("populationsize", function (x) {
     testArgumentsSize(x, "PopulationSize", 1, 1);
     if (x[0] instanceof SPopulation) {
       return new Material(x[0].agents.length);
@@ -408,8 +436,8 @@ export function createFunctions(simulate) {
     throw new ModelError("PopulationSize must be passed an agent population as an argument.", {
       code: 1327
     });
-  };
-  PrimitiveObject["populationsize"] = simulate.varBank["populationsize"];
+  });
+  PrimitiveObject["populationsize"] = simulate.varBank.get("populationsize");
 
   defineFunction(simulate, "Remove", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Agent]" }] }, (x) => {
     if (x[0].dead) {
@@ -432,8 +460,8 @@ export function createFunctions(simulate) {
     return new Material(1);
   });
 
-  defineFunction(simulate, "Add", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Agent Population]" }, { needAgent: true, name: "[Base]", defaultVal: "Agent Base" }] }, (x) => {
-    while ((!(x[0] instanceof SPopulation)) && x[0].container !== null) {
+  defineFunction(simulate, "Add", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Agent Population]", allowOptionalPrimitive: true }, { needAgent: true, name: "[Base]", defaultVal: "Agent Base" }] }, (x) => {
+    while ((!(x[0] instanceof SPopulation)) && !(x[0].container === null || x[0].container === undefined)) {
       x[0] = x[0].container;
     }
     if (!(x[0] instanceof SPopulation)) {
@@ -643,7 +671,7 @@ export function createFunctions(simulate) {
       return new Vector(res, simulate);
     });
 
-  defineFunction(simulate, "FindNearby", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Target" }, { name: "Distance Limit", needNum: true, noVector: true }] },
+  defineFunction(simulate, "FindNearby", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Target", allowOptionalPrimitive: true }, { name: "Distance Limit", needNum: true, noVector: true }] },
     /**
      * @param {[Vector, SPrimitive, Material]} x
      *
@@ -674,7 +702,7 @@ export function createFunctions(simulate) {
       return new Vector(res, simulate);
     });
 
-  defineFunction(simulate, "FindNearest", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Target" }, { noUnits: true, noVector: true, needNum: true, defaultVal: 1, name: "Count" }] },
+  defineFunction(simulate, "FindNearest", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Target", allowOptionalPrimitive: true }, { noUnits: true, noVector: true, needNum: true, defaultVal: 1, name: "Count" }] },
     /**
      * @param {[Vector, SPrimitive, Material]} x
      *
@@ -752,7 +780,7 @@ export function createFunctions(simulate) {
     });
 
 
-  defineFunction(simulate, "FindFurthest", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Target" }, { noUnits: true, noVector: true, needNum: true, defaultVal: 1, name: "Count" }] },
+  defineFunction(simulate, "FindFurthest", { object: [simulate.varBank, VectorObject, PrimitiveObject], params: [{ needPopulation: true, name: "[Agent Population]" }, { name: "Target", allowOptionalPrimitive: true }, { noUnits: true, noVector: true, needNum: true, defaultVal: 1, name: "Count" }] },
     /**
      * @param {[Vector, SPrimitive, Material]} x
      * @returns
@@ -902,7 +930,7 @@ export function createFunctions(simulate) {
       return new Material(1);
     });
 
-  simulate.varBank["print"] = function (x) {
+  simulate.varBank.set("print", function (x) {
     function makePrimitiveString(x) {
       if (x instanceof String) {
         x = "" + x;
@@ -918,7 +946,7 @@ export function createFunctions(simulate) {
       console.log(makePrimitiveString(x[0]));
       return x[0];
     }
-  };
+  });
 
   defineFunction(simulate, "Width", { params: [{ needAgents: true, name: "[Agent Population]" }] }, (x) => {
     return x[0].geoWidth;
@@ -968,6 +996,7 @@ export function createFunctions(simulate) {
      */
     (x) => {
       let v = toNum(x[1]);
+      
       shiftLocation(x[0], plus(x[0].location, v));
       return new Material(0);
     });
@@ -1055,13 +1084,13 @@ export function createFunctions(simulate) {
       return new Material(1);
     });
 
-  simulate.varBank["primitivebase"] = makeObjectBase(PrimitiveObject, simulate);
+  simulate.varBank.set("primitivebase", makeObjectBase(PrimitiveObject, simulate));
 
-  simulate.varBank["agentbase"] = makeObjectBase(AgentObject, simulate);
+  simulate.varBank.set("agentbase", makeObjectBase(AgentObject, simulate));
 
-  simulate.varBank["primitivebase"].parent = simulate.varBank["agentbase"];
+  simulate.varBank.get("primitivebase").parent = simulate.varBank.get("agentbase");
 
-  simulate.varBank["vectorbase"] = makeObjectBase(VectorObject, simulate);
+  simulate.varBank.set("vectorbase", makeObjectBase(VectorObject, simulate));
 }
 
 

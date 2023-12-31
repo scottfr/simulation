@@ -10,6 +10,8 @@ import { ModelError } from "./formula/ModelError.js";
 import { toHTML } from "./Utilities.js";
 import { stringify } from "./formula/Utilities.js";
 import Big from "../vendor/bigjs/big.js";
+import { fn } from "./CalcMap.js";
+
 
 
 export class SPrimitive {
@@ -56,15 +58,61 @@ export class SPrimitive {
 
     this.simulate = simulate;
 
+    /** @type {Map<import("./formula/Units").UnitStore, number>} */
+    this.unitsToBases = new Map();
+
     /** @type {SPrimitive} */
     this.neighborProxyPrimitive = null;
 
-    this.parent = simulate.varBank["primitivebase"];
+    this.parent = simulate.varBank.get("primitivebase");
   }
+  
 
   orig() {
     return this.neighborProxyPrimitive || this;
   }
+
+
+
+
+  /**
+   * @param {import("./formula/Units").UnitStore} u
+   *
+   * @returns
+   */
+  matchPrimitiveUnits(u) {
+    if (this.unitsToBases.has(u)) {
+      return this.unitsToBases.get(u);
+    }
+
+    let timer = this.dna.toBase;
+
+
+    if ((this instanceof SFlow) && this.dna.flowUnitless) {
+      timer = fn["*"](timer, this.simulate.timeUnits.toBase);
+    } else {
+      if (!u || u.isDeepUnitless()) {
+        this.unitsToBases.set(u, 1);
+        return 1;
+      }
+    }
+    
+
+    if (u) {
+      u.addBase();
+      timer = fn["/"](u.toBase, timer);
+    } else {
+      // only can true if a flowUnitless flow
+      timer = fn["/"](1, timer);
+    }
+
+
+    this.unitsToBases.set(u, timer);
+
+    return timer;
+  }
+
+
 
   clone() {
     /** @type {SPrimitive} */
@@ -113,11 +161,14 @@ export class SPrimitive {
   }
 
   toNum() {
+    let oldPosition = this.simulate.evaluatingPosition;
     let val = this.value();
     if (typeof val === "string") {
+      this.simulate.evaluatingPosition = oldPosition;
       // if it is a string, properly stringify it
       return stringify(val, this.simulate);
     }
+    this.simulate.evaluatingPosition = oldPosition;
     return val;
   }
 
@@ -241,6 +292,13 @@ export class SPrimitive {
       this.dna.flowUnitless = false;
     }
 
+    if (!this.dna.units && m.units && m.units.isDeepUnitless()) {
+      m.units.addBase();
+      m.value = m.value * m.units.toBase;
+      m.units = null;
+      m.explicitUnits = true;
+    }
+
     if (!this.dna.units && m.units && !m.units.isUnitless()) {
       throw new ModelError(`Wrong units generated for <i>[${toHTML(this.dna.name)}]</i>. Expected no units and got <i>${m.units.toString()}</i>. Either specify units for the primitive or adjust the equation.`, {
         primitive: this.orig(),
@@ -272,13 +330,17 @@ export class SPrimitive {
       } else {
         m.value = m.value * scale;
         m.units = this.dna.units;
+        m.explicitUnits = true;
       }
+    } else if (this.dna.units && this.dna.units === m.units && !m.explicitUnits) {
+      m.explicitUnits = true;
     }
 
     if (this instanceof SFlow && ignoreFlow !== true && this.dna.flowUnitless) {
       let x = mult(m, new Material(1, this.simulate.timeUnits));
       m.value = x.value;
       m.units = x.units;
+      m.explicitUnits = true;
     }
   }
 
@@ -302,14 +364,15 @@ export class SPrimitive {
     }
 
     if (this.cachedValue === undefined) {
-      if (this.simulate.valuedPrimitives.includes(this)) {
-        throw new ModelError(`Circular equation loop identified including the primitives: ${toHTML(this.simulate.valuedPrimitives.slice(this.simulate.valuedPrimitives.indexOf(this)).map(x => x.dna.name).join(", "))}`, {
+      if (this.simulate.valuedPrimitives.has(this)) {
+        let arrayed = [...this.simulate.valuedPrimitives.values()];
+        throw new ModelError(`Circular equation loop identified including the primitives: ${toHTML(arrayed.slice(arrayed.indexOf(this)).map(x => x.dna.name).join(", "))}`, {
           primitive: this.orig(),
           showEditor: true,
           code: 1085
         });
       }
-      this.simulate.valuedPrimitives.push(this);
+      this.simulate.valuedPrimitives.add(this);
 
       let x;
       try {
@@ -376,13 +439,17 @@ export class SPrimitive {
     }
   }
 
+  /**
+   * @param {any} tree 
+   * @param {Map} neighborhood 
+   */
   setEquation(tree, neighborhood) {
     if (this instanceof SFlow || this instanceof STransition) {
       if (this.omega !== null) {
-        neighborhood.omega = this.omega;
+        neighborhood.set("omega", this.omega);
       }
       if (this.alpha !== null) {
-        neighborhood.alpha = this.alpha;
+        neighborhood.set("alpha", this.alpha);
       }
     }
 
@@ -457,7 +524,7 @@ export class SState extends SPrimitive {
   setValue(value) {
     this.setActive(trueValue(value));
     this.cachedValue = undefined;
-    this.simulate.valuedPrimitives = [];
+    this.simulate.valuedPrimitives = new Set();
     this.value();
     if (this.agentId) {
       this.container.updateStates();
@@ -484,7 +551,7 @@ export class SState extends SPrimitive {
     let init;
 
     try {
-      init = toNum(evaluateTree(this.equation, globalVars(this, this.simulate), this.simulate));
+      init = toNum(evaluateTree(this.equation, localVars(this, this.simulate), this.simulate));
     } catch (err) {
       if (err instanceof ModelError) {
         if (err.primitive && err.showEditor) {
@@ -660,7 +727,7 @@ export function updateTrigger(clear) {
   if (this.canTrigger()) {
     let v;
     try {
-      v = toNum(evaluateTree(this.equation, globalVars(this, this.simulate), this.simulate));
+      v = toNum(evaluateTree(this.equation, localVars(this, this.simulate), this.simulate));
     } catch (err) {
       if (err instanceof ModelError) {
         if (err.primitive && err.showEditor) {
@@ -912,7 +979,7 @@ export class SAction extends SPrimitive {
     }
 
     try {
-      evaluateTree(this.action, globalVars(this, this.simulate), this.simulate);
+      evaluateTree(this.action, localVars(this, this.simulate), this.simulate);
 
       if (this.dna.repeat) {
         if (this.dna.trigger !== "Condition") {
@@ -977,7 +1044,7 @@ export class SPopulation extends SPrimitive {
 
     this.constructorFunction = SPopulation;
 
-    this.vector = new Vector([], simulate, [], simulate.varBank["primitivebase"]);
+    this.vector = new Vector([], simulate, [], simulate.varBank.get("primitivebase"));
   }
 
   collectData() {
@@ -1043,7 +1110,7 @@ export class SPopulation extends SPrimitive {
       agent.agentId = this.agentId;
 
       for (let dna of this.DNAs) {
-        decodeDNA(dna, agent, this.simulate);
+        decodeDNA(dna, agent, this.simulate, true);
       }
 
       agent.setIndex(this.size - 1);
@@ -1059,8 +1126,12 @@ export class SPopulation extends SPrimitive {
 
       if (this.placement === "Custom Function") {
         // @ts-ignore - Agent is equivalent to Primitive for this use case
-        neighbors.self = agent;
-        agent.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation(this.placementFunction, this.simulate, { "-parent": this.simulate.varBank, self: agent }, neighbors)), this.geoDimUnitsObject, this.simulate, null, null, "Agent placement functions must return a two element vector");
+        neighbors.set("self", agent);
+        // @ts-ignore
+        agent.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation(this.placementFunction, this.simulate, new Map([
+          ["-parent", this.simulate.varBank],
+          ["self", agent]
+        ]), neighbors)), this.geoDimUnitsObject, this.simulate, null, null, "Agent placement functions must return a two element vector");
 
         validateAgentLocation(agent.location, this);
 
@@ -1072,10 +1143,15 @@ export class SPopulation extends SPrimitive {
         agent.location = new Vector([mult(this.geoWidth, new Material(Rand(this.simulate))), mult(this.geoHeight, new Material(Rand(this.simulate)))], this.simulate, ["x", "y"]);
       }
       if (this.network === "Custom Function") {
-        let tree = trimTree(createTree(this.networkFunction), neighbors, this.simulate);
+        let tree = trimTree(createTree(this.networkFunction, "p:" + this.id + ":networkFunction", this.simulate), neighbors, this.simulate);
         for (let a of this.agents) {
           if (agent !== a) {
-            if (trueValue(simpleEquation(this.networkFunction, this.simulate, { "-parent": this.simulate.varBank, "a": agent, "b": a }, neighbors, tree))) {
+            // @ts-ignore
+            if (trueValue(simpleEquation(this.networkFunction, this.simulate, new Map([
+              ["-parent", this.simulate.varBank],
+              ["a", agent],
+              ["b", a]
+            ]), neighbors, tree))) {
               agent.connect(a);
             }
           }
@@ -1176,7 +1252,7 @@ export class SAgent {
 
     this.simulate = simulate;
 
-    this.vector = new Vector([], simulate, [], simulate.varBank["agentbase"]);
+    this.vector = new Vector([], simulate, [], simulate.varBank.get("agentbase"));
   }
 
   createIds() {
@@ -1407,7 +1483,7 @@ export class SStock extends SPrimitive {
   setValue(value) {
     this.level = value;
     this.cachedValue = undefined;
-    this.simulate.valuedPrimitives = [];
+    this.simulate.valuedPrimitives = new Set();
     this.value();
   }
 
@@ -1446,7 +1522,7 @@ export class SStock extends SPrimitive {
     let init;
 
     try {
-      init = toNum(evaluateTree(this.equation, globalVars(this, this.simulate), this.simulate));
+      init = toNum(evaluateTree(this.equation, localVars(this, this.simulate), this.simulate));
     } catch (err) {
       if (err instanceof ModelError) {
         if (err.primitive && err.showEditor) {
@@ -1491,6 +1567,7 @@ export class SStock extends SPrimitive {
       }
       if (!init.units) {
         init.units = this.dna.units;
+        init.explicitUnits = true;
       }
     }
 
@@ -1518,7 +1595,7 @@ export class SStock extends SPrimitive {
             return;
           }
 
-          let overlap = minus(this.simulate.varBank["min"]([delaySpanEnd, eventSpan[1]]), eventSpan[0]);
+          let overlap = minus(this.simulate.varBank.get("min")([delaySpanEnd, eventSpan[1]]), eventSpan[0]);
           
           this.level = plus(this.level, mult(overlap, this.initRate));
         }
@@ -1779,7 +1856,7 @@ export class SVariable extends SPrimitive {
   innerClone() { }
 
   calculateValue() {
-    let x = evaluateTree(this.equation, globalVars(this, this.simulate), this.simulate);
+    let x = evaluateTree(this.equation, localVars(this, this.simulate), this.simulate);
     if (typeof x === "boolean") {
       if (x) {
         x = new Material(1);
@@ -1793,6 +1870,7 @@ export class SVariable extends SPrimitive {
     }
     if (!x.units) {
       x.units = this.dna.units;
+      x.explcitUnits = true;
     }
 
     return x;
@@ -1881,7 +1959,7 @@ export class SFlow extends SPrimitive {
       let x;
 
       try {
-        x = toNum(evaluateTree(this.equation, globalVars(this, this.simulate), this.simulate));
+        x = toNum(evaluateTree(this.equation, localVars(this, this.simulate), this.simulate));
 
         if (!(x instanceof Vector || isFinite(x.value))) {
           verifyValuedType(x, this);
@@ -1932,6 +2010,7 @@ export class SFlow extends SPrimitive {
           verifyValuedType(this.rate, this);
 
           this.rate.units = this.dna.units;
+          this.rate.explicitUnits = true;
         }
       }
 
@@ -2065,7 +2144,7 @@ export class SFlow extends SPrimitive {
         if (this.omega && this.omega.dna.nonNegative) {
           if (rate instanceof Vector) {
             /** @type {Vector} */
-            let vec = this.simulate.varBank["flatten"]([plus(toNum(this.omega.level), rate)]);
+            let vec = this.simulate.varBank.get("flatten")([plus(toNum(this.omega.level), rate)]);
             for (let item of vec.items) {
               if (item instanceof Material && item.value < 0) {
                 throw new ModelError("Inconsistent non-negative constraints for flow.", {
@@ -2131,7 +2210,7 @@ export class SFlow extends SPrimitive {
           stock = this.alpha;
         }
 
-        if (err.code === 2000) {
+        if (err.code === 2000 || err.code === 2001) {
           throw new ModelError(`Incompatible vector keys for flow <i>[${toHTML(this.dna.name)}]</i> and connected stock <i>[${toHTML(stock.dna.name)}]</i>.`, {
             primitive: this.orig(),
             showEditor: false,
@@ -2167,14 +2246,26 @@ export class SFlow extends SPrimitive {
 /**
  * @param {SPrimitive} primitive
  * @param {import("./Simulator").Simulator} simulate
+ * 
+ * @return {Map<string, any>}
  */
-function globalVars(primitive, simulate) {
+function localVars(primitive, simulate) {
   if (primitive instanceof SAgent) {
-    return { "-parent": simulate.varBank, "self": primitive };
+    // @ts-ignore
+    return new Map([
+      ["-parent", simulate.varBank],
+      ["self", primitive]
+    ]);
   } else if (primitive.container) {
-    return { "-parent": simulate.varBank, "self": primitive.container };
+    // @ts-ignore
+    return new Map([
+      ["-parent", simulate.varBank], 
+      ["self", primitive.container]
+    ]);
   } else {
-    return simulate.varBank;
+    return new Map([
+      ["-parent", simulate.varBank]
+    ]);
   }
 }
 

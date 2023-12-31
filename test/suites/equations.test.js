@@ -41,23 +41,72 @@ test("Auto function vectorization", () => {
 });
 
 
-
-test("Calculates correctly", () => {
-  check("2+2", 4);
-  failure("2+");
-  check("\n\n2+2", 4);
-  check("2+2\n\n", 4);
-  check("\n\n2+2\n\n", 4);
+test("Comments", () => {
 
   check("2+2#abc", 4);
   check("2+2//abc", 4);
+
+  check(`2+2
+//abc
+`, 4);
+
+  check(`if true then
+4
+//abc
+end if
+`, 4);
+
+
+  check(`if true
+then
+4
+//abc
+end if
+`, 4);
+
+  check(`if true
+  
+  then
+  
+4
+//abc
+end if
+`, 4);
+
+  check(`1
+//abc
+4
+`, 4);
+
+  check(`if true then
+  1
+  // abc
+  2
+else
+  3
+end if`, 2);
+
   check("2+/*abc*/2", 4);
+  check("2+/*ab \nc\n\nd*/2", 4);
+  check("2+/*ab \nc\n\nd*/2/* xy\nz */", 4);
+  check("/*ab \nc\n\nd*/3", 3);
+  check("/* . */\nx <- 4\n/* . */\nx ", 4);
+  check("/* . */\nx <- 4 /* . */\nx ", 4);
+  check("/* . */ x <- 4\n/* . */\nx ", 4);
+  check("/* . */ x <- 4 /* . */\nx ", 4);
+  check("2+2\n/*abc\nxyz*/\n", 4);
+  check(`x<-3 #set x
+x`, 3);
 
   check("2+2\n2+3", 5);
   check("2+2\r\n2+3\r\n\n4+6", 10);
   check("2+2\n2+3\n1#abfds\n4+6#abc", 10);
   check("2+2\n/*\n2+3\n*/1#abfds\n4+6#abc", 10);
+});
 
+
+test("Basic calculations", () => {
+  check("2+2", 4);
   check("2-3", -1);
   check("2*3", 6);
   check("1/2", 0.5);
@@ -103,6 +152,7 @@ test("Calculates correctly", () => {
   check("true xor true", 0);
   check("false xor false", 0);
   check("not false", 1);
+  check("not(false)", 1);
   check("! false", 1);
   failure("'a' && 1");
 });
@@ -118,8 +168,50 @@ test("ifthenelse()", () => {
   check("ifthenelse({a:true, b:false}, 1, {a:5,b:6}).b", 6);
   check("ifthenelse({a:true, b:false}, {a:-1,b:-2}, {a:5,b:5}).a", -1);
   check("ifthenelse({a:true, b:false}, {a:-1,b:-2}, {a:5,b:6}).b", 6);
+
+  check("IfThenElse(7 > 9,1,0)", 0);
+  check("IfThenElse(7 <= 9,1,0)", 1);
+  check("IfThenElse(1,5,9)", 5);
+  check("IfThenElse(8,5,9)", 5);
+  check("IfThenElse(-1,5,9)", 5);
+  check("IfThenElse(.5,5,9)", 5);
+  check("IfThenElse(0,5,9)", 9);
+  failure("ifthenelse()");
+  failure("ifthenelse(1)");
+  failure("ifthenelse(1,2)");
 });
 
+
+test("Rounding", () => {
+
+  check("round((1+3)*5^(6+5^2/3^3-2+3))", 1386898);
+  check("round({2.6 cow})*{1 1/cow}", 3);
+  failure("round({1 meter} + {10 centimeters})", "explicitly set");
+  check("round({1.1 meter} + {3 meters}) * {1 1/meter}", 4);
+  check("round({1.1 meter} * 4) * {1 1/meter}", 4);
+  check("round({1.1 meter} / (1/4))* {1 1/meter}", 4);
+  check("round(-{1.1 meter}) * {1 1/meter}", -1);
+  check("round({1.1 meter} - {3 meters}) * {1 1/meter}", -2);
+  check("round({1.1 meter}, 'meters')* {1 1/meter}", 1);
+  check("round({1.1 meter}, 'centimeters')* {1 1/meter}", 1.1);
+  check("round({1.1 meter} * {3 oof}) * {1 1/(meter*oof)}", 3);
+  check("round({1.1 meter} / {.3333 oof}) * {1 oof/meter}", 3);
+  failure("round({1 meter} * {10 centimeters})", "explicitly set");
+  check("round({1 amount/years} * {10 years} * {1 1/amount})", 10);
+  check("round({1 amount/years} / {1/10 1/years} / {1 amount})", 10);
+  check("{1 year} / {1 year/dog} * {2 1/dog}", 2);
+  check("{1 year} / {1 month/dog} * {2 1/dog}", 24);
+  failure("round({1 meter} * ({1 mile} + {1 centimeter}))");
+  failure("round({1 meter} + ({1 mile} + {1 centimeter}))");
+  failure("round()");
+  check("sum(round({1.1, 2.8}))", 4);
+  check("ceiling(pi*10)", 32);
+  failure("ceiling()");
+  check("sum(ceiling({1.1, 2.1}))", 5);
+  check("floor(1.9)", 1);
+  failure("floor()");
+  check("sum(floor({1.1,2.9}))", 3);
+});
 
 
 test("Comparisons", () => {
@@ -137,13 +229,28 @@ test("Comparisons", () => {
 
 
 test("Misc", () => {
+
+  check("2*3/2", 3);
+  check("2*3/4", 1.5);
+  
+  check("\n\n2+2", 4);
+  check("2+2\n\n", 4);
+  check("\n\n2+2\n\n", 4);
+  failure("2+");
+
   testConfig.globals = "testa <- 7";
 
   check("testa + -testa", 0);
   check("testa^2", 49);
   failure("testa^");
+  failure("xxxx", "does not exist");
+  failure("constructor", "does not exist");
+  failure("self", "does not exist");
   check("sqrt(4)", 2);
+  failure("sqrt (4)");
   check("sqrt({4 meters^2}) * {1 1/meters}", 2);
+  failure("{1,2}.constructor", "not in vector");
+  failure("{a: 1}.constructor", "not in vector");
   check("{4 meters^2}^.5 * {1 1/meters}", 2);
   failure("sqrt()");
   failure("sqrt(1,2)");
@@ -163,6 +270,17 @@ test("Misc", () => {
   check("1e2", 100);
   check("1e+2", 100);
   check("1.0e-2", 0.01);
+  check("1E2", 100);
+  check("1E+2", 100);
+  check("1.0E-2", 0.01);
+  check("(1+2)", 3);
+  check("1-2+3", 2);
+
+
+  check(`1
+  3`, 3);
+  check(`a<-1.2
+  {ceiling(a)}{1}`, 2);
 
   testConfig.globals = "testfn(a,b) <- a^2 + b^2";
   check("testfn(1,3)", 10);
@@ -171,16 +289,6 @@ test("Misc", () => {
   check("testfn()", 72);
 
   check("5^3^2", 1953125);
-  check("round((1+3)*5^(6+5^2/3^3-2+3))", 1386898);
-  check("round({2.6 cow})*{1 1/cow}", 3);
-  failure("round()");
-  check("sum(round({1.1, 2.8}))", 4);
-  check("ceiling(pi*10)", 32);
-  failure("ceiling()");
-  check("sum(ceiling({1.1, 2.1}))", 5);
-  check("floor(1.9)", 1);
-  failure("floor()");
-  check("sum(floor({1.1,2.9}))", 3);
   check("max(7,4,10)", 10);
   check("min(7,4,10)", 4);
 
@@ -189,16 +297,6 @@ test("Misc", () => {
   check("max({1,2}, {0, 6})", [1, 6]);
   check("min({1,2}, {0, 6})", [0, 2]);
 
-  check("IfThenElse(7 > 9,1,0)", 0);
-  check("IfThenElse(7 <= 9,1,0)", 1);
-  check("IfThenElse(1,5,9)", 5);
-  check("IfThenElse(8,5,9)", 5);
-  check("IfThenElse(-1,5,9)", 5);
-  check("IfThenElse(.5,5,9)", 5);
-  check("IfThenElse(0,5,9)", 9);
-  failure("ifthenelse()");
-  failure("ifthenelse(1)");
-  failure("ifthenelse(1,2)");
   failure("cos()");
   check("sum(cos({pi,pi/2}))", -1);
   failure("cos({1 cow})");
@@ -223,6 +321,9 @@ test("Misc", () => {
   failure("arctan({1 cow})");
   check("cos(acos(.7))", 0.7);
   check("cos(acos({.7})){1}", 0.7);
+  failure("{1, 2, 3} {1}");
+  failure("{{1,2,3}, 2, 3}{1} {2}");
+  failure("cos(acos({.7})) {1}");
   check("sin(asin(.8))", 0.8);
   check("sin(asin({.8})){1}", 0.8);
   check("tan(atan(.2))", 0.2);
@@ -238,6 +339,8 @@ test("Misc", () => {
   failure("magnitude(true)");
 
   check("1e10", 10000000000);
+  check("1.e10", 10000000000);
+  check("123.", 123);
   check("1e11/1e10", 10);
   check("123/1e22", 1.23e-20);
   check("0", 0);
@@ -264,6 +367,8 @@ test("Misc", () => {
   check("0.21", 0.21);
   check("0.67", 0.67);
   check("12/4/3", 1);
+  check("'a'='a'", 1);
+  check("'a'='b'", 0);
   failure("log(0)");
 
   testConfig.globals = "q(x=2) <- x+2";
@@ -328,81 +433,138 @@ test("Misc", () => {
   failure("'a'>'b'");
   failure("'a'>='b'");
 
+
+  check("'a'+2", "a2");
+  check("2+'a'", "2a");
+
+  check("if 1+1 > 1 then \n 10 \n end if", 10);
+  check("if 1+1 > 1 then \n\n\n 10 \n\n\nend if", 10);
+  check("if 1+1>3 then\n10\nend if", 0);
+
+  check("if true then \n 2 \n else \n  \n end if", 2);
+  check("if true\n 2 \n else \n  \n end if", 2);
+  check("if false then \n  \n else \n 2 \n end if", 2);
+  check("if false then \n  \n else if false then\n 3 \nelse \n 2 \n end if", 2);
+  check("if false then \n  \n else if false then\n  \nelse \n 2 \n end if", 2);
+  check("if false then \n  \n else if true then\n 3 \nelse \n 2 \n end if", 3);
+  check("if false then \n  \n else if true\nthen\n 3 \nelse \n 2 \n end if", 3);
+  check("if false then \n  \n else if true\n 3 \nelse \n 2 \n end if", 3);
+  check("if false then \n  \n else if true then\n  \nelse \n 2 \n end if", 0);
+  check("if false then \n  \n else if true then\n   end if", 0);
+  check("if false then \n  \n else if false then\n   end if", 0);
+  check("if false then \n 2 \n else \n  \n end if", 0);
+  check("if true then \n  \n else \n 2 \n end if", 0);
+  check("if true then \n  \n else \n  \n end if", 0);
+
+  check("if 1+1>1 then\n10\nelse\nx<-5\nx^2\nend if", 10);
+  check("if 1+1>1 then\n10\nelse\n\nx<-5\nx^2\nend if", 10);
+  check("if 1+1>3 then\n10\nelse\nx<-5\nx^2\nend if", 25);
+
+  check("if 1+1>1 then\n10\nelse if 4>3 then\n 6\nelse\nx<-5\nx^2\nend if", 10);
+  check("if 0>1 then\n10\nelse if 4>3 then\n 6\nelse\nx<-5\nx^2\nend if", 6);
+  check("if 0>1 then\n10\nelse if 2>3 then\n 6\nelse\nx<-5\nx^2\nend if", 25);
+
+  failure("{1cow}");
+
+  check("function xkk(a)\na<-a*2\na<-a*3\na\nend function\nxkk(4)", 24);
+  check("function xkk(a)\n\nend function\nxkk(4)", 0);
+  check("xkk <- function(a)\n\nend function\nxkk(4)", 0);
+  failure("function xkk(a)\njkk<-100\na<-a*2\na<-a*3\na\nend function\nxkk(4)\njkk");
+
+  check("1\n 2\n 3", 3);
+  check("1\n return(2)\n 3", 2);
+  check("if true then\n 5\n end if\n return 6", 6);
+  check("if true then\n return 5\n end if\n return 6", 5);
+
+  check("function test()\n 1\n 2\n end function\n test()*3", 6);
+  check("function test()\n return 1\n 2\n end function\n test()*3", 3);
+
+  check("", 0);
+  check(" ", 0);
+  check("# abc\n \n\n/*43*/", 0);
+
+
+  failure("function a(x)\naVal <- 10\nb(x)\nend function\nfunction b(x)\nx+aVal\nend Function\na(2)");
+  
   testConfig.globals = "";
 });
 
 
 test("Vectors", () => {
 
+  check(" {1, 2}", [1, 2]);
 
-  check( " {1, 2}", [1, 2]);
-
-  check( "{1,3} =  {1, 2}", [true, false]);
-  check( " {1, 2} != {1,4}", [false, true]);
-  check( "{1,2,3} > {1,4,0}", [false, false, true]);
-  check( "{1,2,3} >= {1,4,0}", [true, false, true]);
-  check( "{1,2,3} < {1,4,0}", [false, true, false]);
-  check( "{1,2,3} <= {1,4,0}", [true, true, false]);
-
-
-  check( "1=  {1, 2}", [true, false]);
-  check( "1!= {1,4}", [false, true]);
-  check( "1> {1,4,0}", [false, false, true]);
-  check( "1 >= {1,4,0}", [true, false, true]);
-  check( "1< {1,4,0}", [false, true, false]);
-  check( "1<= {1,4,0}", [true, true, false]);
-
-  check( " {1, 2} =1", [true, false]);
-  check( "{1,4} !=1", [false, true]);
-  check( "{1,4,0} <1", [false, false, true]);
-  check( "{1,4,0} <=1", [true, false, true]);
-  check( "{1,4,0} >1", [false, true, false]);
-  check( "{1,4,0} >=1", [true, true, false]);
-
-  check( "{true,false}  &&  {true,true}", [true, false]);
-  check( "{true,false}  && true", [true, false]);
-  check( "{true,false}  ||  {true,true}", [true, true]);
-  check( "{true,false}  || true", [true, true]);
-  check( "!  {true,false}", [false, true]);
+  check("{1,3} = {1, 2}", [true, false]);
+  check("{1, {3, 4}} = {1, {5, 4}}", [true, [false, true]]);
+  check("{a: 1, b: {c: 3, d: 4}} = {a:1, b: {c: 5, d: 4}}", {a: true, b: {c: false, d: true}});
+  failure("{1, 2, 3} = {1, 2}");
+  failure("{a: 1, b: {c: 3, d: 4}} = {a: 3, c: 2}");
+  failure("{a: 1, b: {c: 3, d: 4}, e: 3} = {1, 2}");
+  check(" {1, 2} != {1,4}", [false, true]);
+  check("{1,2,3} > {1,4,0}", [false, false, true]);
+  check("{1,2,3} >= {1,4,0}", [true, false, true]);
+  check("{1,2,3} < {1,4,0}", [false, true, false]);
+  check("{1,2,3} <= {1,4,0}", [true, true, false]);
 
 
+  check("1=  {1, 2}", [true, false]);
+  check("1!= {1,4}", [false, true]);
+  check("1> {1,4,0}", [false, false, true]);
+  check("1 >= {1,4,0}", [true, false, true]);
+  check("1< {1,4,0}", [false, true, false]);
+  check("1<= {1,4,0}", [true, true, false]);
+
+  check(" {1, 2} =1", [true, false]);
+  check("{1,4} !=1", [false, true]);
+  check("{1,4,0} <1", [false, false, true]);
+  check("{1,4,0} <=1", [true, false, true]);
+  check("{1,4,0} >1", [false, true, false]);
+  check("{1,4,0} >=1", [true, true, false]);
+
+  check("{true,false}  &&  {true,true}", [true, false]);
+  check("{true,false}  && true", [true, false]);
+  check("{true,false}  ||  {true,true}", [true, true]);
+  check("{true,false}  || true", [true, true]);
+  check("!  {true,false}", [false, true]);
 
 
-  check( "{2,3} + {1,4}", [3, 7]);
-  check( "{2,3} +2", [4, 5]);
-  check( "2+ {2,3}", [4, 5]);
-  check( "{2,3} - {1,4}", [1, -1]);
-  check( "{2,3} -2", [0, 1]);
-  check( "2- {2,3}", [0, -1]);
-  check( "{2,3} * {1,4}", [2, 12]);
-  check( "{2,3} *2", [4, 6]);
-  check( "2* {2,3}", [4, 6]);
-  check( "{2,3} / {1,4}", [2, .75]);
-  check( "{2,3} /2", [1, 1.5]);
-  check( "2/ {2,4}", [1, .5]);
-  check( "- {2,3}", [-2, -3]);
-  check( "{8,3}  mod 3", [2, 0]);
-  check( "3 mod  {8,2}", [3, 1]);
-  check( "{8,2} ^2", [64, 4]);
-  check( "2^ {3,2}", [8, 4]);
-  check( "{3,4} ^ {3,2}", [27, 16]);
 
-  check( "count(1,2, {4,5} )", 4);
-  check( "join(1,2, {4,5} ).length()", 4);
-  check( "min(1,2, {-1,5} )", [-1, 1]);
-  check( "max(1,2, {4,5} )", [4, 5]);
-  check( "min( {2,5} ,3,4)", [2, 3]);
-  check( "max( {4,5} ,3,4.5)", [4.5, 5]);
-  check( "join(1,2, {4,5} )", [1, 2, 4, 5]);
-  check( "select( {4,5} , 2)", 5);
-  check( "select( {4,5} ,  {2} )", [5]);
-  check( "select( {4,5} ,  {true,false} )", [4]);
-  check( "filter({4,5,6,1,7}, x>4)", [5, 6, 7]);
-  check( "filter({4,5,6,1,7}, function(i) i>4)", [5, 6, 7]);
+
+  check("{2,3} + {1,4}", [3, 7]);
+  check("{2,3} +2", [4, 5]);
+  check("2+ {2,3}", [4, 5]);
+  check("{2,3} - {1,4}", [1, -1]);
+  check("{2,3} -2", [0, 1]);
+  check("2- {2,3}", [0, -1]);
+  check("{2,3} * {1,4}", [2, 12]);
+  check("{2,3} *2", [4, 6]);
+  check("2* {2,3}", [4, 6]);
+  check("{2,3} / {1,4}", [2, .75]);
+  check("{2,3} /2", [1, 1.5]);
+  check("2/ {2,4}", [1, .5]);
+  check("- {2,3}", [-2, -3]);
+  check("{8,3}  mod 3", [2, 0]);
+  check("3 mod  {8,2}", [3, 1]);
+  check("{8,2} ^2", [64, 4]);
+  check("2^ {3,2}", [8, 4]);
+  check("{3,4} ^ {3,2}", [27, 16]);
+
+  check("count(1,2, {4,5} )", 4);
+  check("join(1,2, {4,5} ).length()", 4);
+  check("min(1,2, {-1,5} )", [-1, 1]);
+  check("max(1,2, {4,5} )", [4, 5]);
+  check("min( {2,5} ,3,4)", [2, 3]);
+  check("max( {4,5} ,3,4.5)", [4.5, 5]);
+  check("join(1,2, {4,5} )", [1, 2, 4, 5]);
+  check("select( {4,5} , 2)", 5);
+  check("select( {4,5} ,  {2} )", [5]);
+  check("select( {4,5} ,  {true,false} )", [4]);
+  check("filter({4,5,6,1,7}, x>4)", [5, 6, 7]);
+  check("filter({4,5,6,1,7}, function(i) i>4)", [5, 6, 7]);
   check("z <- {1,2,3}\nfilter(z, x>1)", [2, 3]);
   check("z <- {1,2,3}\nmap(z, x^2)\nz", [1, 2, 3]);
-  check( "{4,5,6,1,7}.filter(x>4)", [5, 6, 7]);
-  check( "{4,5,6,1,7}.filter(function(i) i>4)", [5, 6, 7]);
+  check("{4,5,6,1,7}.filter(x>4)", [5, 6, 7]);
+  check("{4,5,6,1,7}.filter(function(i) i>4)", [5, 6, 7]);
 
 
   check("'a'='b'", 0);
@@ -413,83 +575,102 @@ test("Vectors", () => {
   check("'bB'!='bb'", 0);
 
 
-  check( "5 = 500", 0);
-  check( "{5 meters} = {500 centimeters}", 1);
-  check( "{5 meters} = {500 sheep}", 0);
-  check( "{5 meters} = 500", 0);
-  check( "{5 meters} = 5", 0);
+  check("5 = 500", 0);
+  check("{5 meters} = {500 centimeters}", 1);
+  check("{5 meters} = {500 sheep}", 0);
+  check("{5 meters} = 500", 0);
+  check("{5 meters} = 5", 0);
   failure( "{5 meters} > 5");
-  check( "{5 meters} > {500 centimeters}", 0);
-  check( "{5 meters} >= {500 centimeters}", 1);
+
+  check("{5 meters} > {500 centimeters}", 0);
+  check("{600 centimeters} > {5 meters}", 1);
+
+  check("{500 centimeters} < {5 meters}", 0);
+  check("{3 meters} < {500 centimeters}", 1);
+
+  check("{3 meters} >= {500 centimeters}", 0);
+  check("{5 meters} >= {500 centimeters}", 1);
+
+  check("{7 meters} <= {500 centimeters}", 0);
+  check("{1 meters} <= {500 centimeters}", 1);
 
   check("sum(abs({1,-2}))", 3);
   check("sum({1,-2}.abs())", 3);
 
-  check( "a<-6\n {a cows}*{1 1/cows}", 6);
-  check( "a<-6\n {a+1 cows}*{1 1/cows}", 7);
-  failure( "{{1 sheep} cows}");
-  failure( "{{x sheep} cows}");
+  check("a<-6\n {a cows}*{1 1/cows}", 6);
+  check("a<-6\n {a+1 cows}*{1 1/cows}", 7);
+  failure("{{1 sheep} cows}");
+  failure("{{x sheep} cows}");
+  failure("{1cows} * {1 1/cows}");
 
-  check( "(2/{1 year})*{1 year}", 2);
-  check( "(3*{1 year})/{1 year}", 3);
+  check("(2/{1 year})*{1 year}", 2);
+  check("(3*{1 year})/{1 year}", 3);
 
-  check( "({1 year}/2)/{1 year}", 0.5);
-  check( "({1 year}*3)/{1 year}", 3);
+  check("({1 year}/2)/{1 year}", 0.5);
+  check("({1 year}*3)/{1 year}", 3);
 
-  check("({a:1,2,b:3}.keys()=={'a','b'}){1}", 1);
+  check("({a:1, aa: 2,b:3}.keys()=={'a','aa','b'}){1}", 1);
   check("{1,2,3}.keys().length()", 0);
-  check("({a:1,2,b:3}.values()){1}", 1);
-  failure("({a:1,2,b:3}.values()){'a'}");
+  check("({a:1, aa:2,b:3}.values()){1}", 1);
+  failure("({a:1,aa:2,b:3}.values()){'a'}");
 
-  check( "map({4,5}, x^2)",  [16, 25]);
-  check( "map({4,5}, function(i) \n z<-i+i \n z*2 \n end function)",  [16, 20]);
-  check( "{4, 5}.map(x^2)",  [16, 25]);
-  check( "{4, 5}.map(mean)",  [4, 5]);
-  check( "{4, 5}.map(function(i) \n z<-i+i \n z*2 \n end function)",  [16, 20]);
-  check( "filter({4,5,6,1,7}, x>=4)", [4, 5, 6, 7]);
-  check( "map({4,6}, x/4)",  [1, 1.5]);
+  check("map({4,5}, x^2)",  [16, 25]);
+  check("map({4,5}, function(i) \n z<-i+i \n z*2 \n end function)",  [16, 20]);
+  check("{4, 5}.map(x^2)",  [16, 25]);
+  check("{4, 5}.map(mean)",  [4, 5]);
+  check("{4, 5}.map(function(i) \n z<-i+i \n z*2 \n end function)",  [16, 20]);
+  check("filter({4,5,6,1,7}, x>=4)", [4, 5, 6, 7]);
+  check("map({4,6}, x/4)",  [1, 1.5]);
 
-  check( "repeat(x+1, 3)",  [2, 3, 4]);
+  check("repeat(x+1, 3)",  [2, 3, 4]);
   failure( "repeat(x+1, {3 cows})", "must be unitless");
   failure( "repeat(x+1, 'cat')", "must be a Number");
   failure( "repeat(x+1, true)", "must be a Number");
 
-  check( "repeat(x+1, {'a','b','c'}){'b'}",  3);
+  check("repeat(x+1, {'a','b','c'}){'b'}",  3);
   failure( "repeat(x+1, {1, 2})", "all strings");
   failure( "repeat(x+1, {'a', 'b', 'a'})", "unique strings");
   failure( "repeat(x+1, {'a': 1, 'b': 2})", "can't have names");
 
-  check( "indexof({4,3,1}, 1)",  3);
-  check( "{4,3,1}.indexOf(1)",  3);
-  check( "indexof({4,3,1},{1,44,3})",  [3, 0, 2]);
-  check( "flatten({4,3,1},{1,44,3})",  [4, 3, 1, 1, 44, 3]);
-  check( "flatten({4,3,1,{1,44,3} })",  [4, 3, 1, 1, 44, 3]);
-  check( "{4,3,1,{1,44,3} }.flatten()",  [4, 3, 1, 1, 44, 3]);
-  check( "flatten({4,{3},1,{1,{44,3}} })",  [4, 3, 1, 1, 44, 3]);
-  check( "flatten({4,3,1,1,44,3 })",  [4, 3, 1, 1, 44, 3]);
-  check( "count(sample({4,3,1,1,44,3 },5))",  5);
-  check( "sample({4,3,1,1,44,3 }, 5).count()",  5);
-  check( "count(sample({4,3,1,1,44,3 },6,true))",  6);
-  check( "count(sample({4,3,1,1,44,3,4,5,6,7 },7,false))",  7);
-  check( "{4,3,1,1,44,3 }.sample(5).length()",  5);
-  check( "{4,3,1,1,44,3 }.sample(6,true).length()",  6);
-  check( "{4,3,1,1,44,3,4,5,6,7 }.sample(7,false).length()",  7);
-  check( "reverse({4,3,2},1)",  [1, 2, 3, 4]);
-  check( "{4,3,2,1}.reverse()",  [1, 2, 3, 4]);
-  check( "sort({4,2,3},1,2)",  [1, 2, 2, 3, 4]);
-  check( "{4,2,3 ,1,2}.sort()",  [1, 2, 2, 3, 4]);
-  check( "unique({4,2,3},1,2)",  [4, 2, 3, 1]);
-  check( "{4,2,3,1,2}.unique()",  [4, 2, 3, 1]);
-  check( "unique({1,{1,2},{3,4},{1,2}})", [1, [1, 2], [3, 4]]);
-  check( "contains({4,3,2},1)",  0);
-  check( "contains({4,3,2},3)",  1);
+  check("indexof({4,3,1}, 1)",  3);
+  check("{4,3,1}.indexOf(1)",  3);
+  check("indexof({4,3,1},{1,44,3})",  [3, 0, 2]);
+  check("flatten({4,3,1},{1,44,3})",  [4, 3, 1, 1, 44, 3]);
+  check("flatten({4,3,1,{1,44,3} })",  [4, 3, 1, 1, 44, 3]);
+  check("{4,3,1,{1,44,3} }.flatten()",  [4, 3, 1, 1, 44, 3]);
+  check("flatten({4,{3},1,{1,{44,3}} })",  [4, 3, 1, 1, 44, 3]);
+  check("flatten({4,3,1,1,44,3 })",  [4, 3, 1, 1, 44, 3]);
+  check("count(sample({4,3,1,1,44,3 },5))",  5);
+  check("sample({4,3,1,1,44,3 }, 5).count()",  5);
+  check("count(sample({4,3,1,1,44,3 },6,true))",  6);
+  check("count(sample({4,3,1,1,44,3,4,5,6,7 },7,false))",  7);
+  check("{4,3,1,1,44,3 }.sample(5).length()",  5);
+  check("{4,3,1,1,44,3 }.sample(6,true).length()",  6);
+  check("{4,3,1,1,44,3,4,5,6,7 }.sample(7,false).length()",  7);
+  check("reverse({4,3,2},1)",  [1, 2, 3, 4]);
+  check("{4,3,2,1}.reverse()",  [1, 2, 3, 4]);
+  check("sort({4,2,3},1,2)",  [1, 2, 2, 3, 4]);
+  check("{4,2,3 ,1,2}.sort()",  [1, 2, 2, 3, 4]);
+  check("unique({4,2,3},1,2)",  [4, 2, 3, 1]);
+  check("{4,2,3,1,2}.unique()",  [4, 2, 3, 1]);
+  check("unique({1,{1,2},{3,4},{1,2}})", [1, [1, 2], [3, 4]]);
+  check("contains({4,3,2}, 1)",  0);
+  check("contains({5, 4,3,2}, 3)",  1);
+  check("contains({4,{ x: 5 },2}, 3)",  0);
+  check("contains({4,{ x: 5 },2}, 5)",  1);
+  check("contains({4,{ x: 5, y: {99} },2}, 98)",  0);
+  check("contains({4,{ x: 5, y: {99} },2}, 99)",  1);
+  check("contains({4,8,9,{1,2,3,4,5},2}, 5)",  1);
+  failure("contains(4, 4)");
   check("{'a','b'}.contains('b')", 1);
   check("{'a','b'}.contains('c')", 0);
   check("{'a','b'}.indexof('c')", 0);
   check("{'a','b'}.indexof('a')", 1);
-  check( "{4,3,2}.contains(1)",  0);
-  check( "{4,3,2}.contains(3)",  1);
-  check( "randBoolean() && false",  0);
+  check("{'a','b', {1,2,3}, 4}.indexof(4)", 4);
+  check("{'a','b', {1,2,3}, 4}.indexof(3)", 0);
+  check("{4,3,2}.contains(1)",  0);
+  check("{4,3,2}.contains(3)",  1);
+  check("randBoolean() && false",  0);
 
   failure("sum(true)");
   failure("1/count({})");
@@ -502,7 +683,7 @@ test("Vectors", () => {
   check("z<-{1,3}\n z+z*2*z", [3, 21]);
 
 
-  check( "repeat(ifthenelse(x mod 2,1,0), 3)",  [1, 0, 1]);
+  check("repeat(ifthenelse(x mod 2,1,0), 3)",  [1, 0, 1]);
 });
 
 
@@ -562,6 +743,8 @@ test("Units", () => {
   check("removeUnits({2 hours}, 'minutes')", 120);
   check("removeUnits(2, 'minutes')", 2);
   failure("removeUnits({1 cow}, 'minutes')", "Incompatible units");
+
+  check("removeUnits({a: {2 hours}, b: {60 minutes}}, 'hours')", {a: 2, b: 1});
 });
 
 
@@ -609,8 +792,8 @@ test("Vector aggregation", () => {
   failure("median({1,2}, {3, 4}, {2,'a': 6})");
   failure("median({'b': 1,2}, {3, 4}, {2, 6})");
   check("median({ {1,2}, {3, 4, 3}, {2,6} })", 3);
-  check("median({ {1,2}, {3, 4,3}, {2,'a': 6} })", 3);
-  check("median({ {'b': 1,2}, {3, 4,3}, {2, 6} })", 3);
+  check("median({ {1,2}, {3, 4,3}, {'a': 2,'b': 6} })", 3);
+  check("median({ {'b': 1, 'c':2}, {3, 4,3}, {2, 6} })", 3);
 
   check("union({1,2,3}, {2,3,4})", [1, 2, 3, 4]);
   check("{1,2,3}.union({2,3,4})", [1, 2, 3, 4]);
@@ -635,13 +818,20 @@ test("Vector aggregation", () => {
   failure("lookup(18, {1,2}, {4})");
   failure("lookup(18, {}, {})");
 
-  check("Delays <- function()\nres <- {k: 1}\nres.k <- res.k + 1\nreturn res\nend function\ndelays()\ndelays().k", 2); // Make sure the res array is initialized each time in the funciton
+  check("Delays <- function()\nres <- {k: 1}\nres.k <- res.k + 1\nreturn res\nend function\ndelays()\ndelays().k", 2); // Make sure the res array is initialized each time in the function
 
   check("a <- 10\nWhile a < 20\n    a <- a+1\nEnd loop\n a^2", 400);
+  failure("\nWhile false\n    \nEnd loop\n ");
+  check("\nWhile false\n  //foo  \nEnd loop\n ", 0);
+  check("for x in {1,2,3}\n    \nEnd loop\n ", 0);
+  check("for x from 1 to 3\n    \nEnd loop\n ", 0);
+  check("a <- 10\n\nWhile a < 20\n\n\n    a <- a+1\n\n\nEnd loop\n\n a^2", 400);
   failure("a <- 10\nWhile a < 20\n    s<-1\n    a <- a+1\nEnd loop\n s");
   check("q <- {}\nfor s in repeat(x^2,3)\nq<-join(q,s+1)\nend loop\nq", [2, 5, 10]);
   check("q <- {}\nfor s in repeat(x^2,3)\nj<-s+1\nq<-join(q,j)\nend loop\nq", [2, 5, 10]);
   check("vec <- { }\nFor s from 1 to 3\nvec <- join(vec, s*2)\nEnd loop\nvec", [2, 4, 6]);
+  check("vec <- { }\nFor s from 1 to(3)\nvec <- join(vec, s*2)\nEnd loop\nvec", [2, 4, 6]);
+  check("vec <- { }\nFor s from 1 to 3\n\nvec <- join(vec, s*2)\n\nEnd loop\nvec", [2, 4, 6]);
   check("vec <- { }\nFor s from 1 to 3\nq<-s*2\nvec <- join(vec, q)\nEnd loop\nvec", [2, 4, 6]);
   check("vec <- { }\nFor s from 1 to 3 by 2\nvec <- join(vec, s*2)\nEnd loop\nvec", [2, 6]);
   check("vec <- { }\nFor s from 1 to -3 by -2\nvec <- join(vec, s)\nEnd loop\nvec", [1, -1, -3]);
@@ -731,11 +921,11 @@ test("Vector aggregation", () => {
   check("filter({\"a\":1, \"b\":3}, x>2){\"b\"}", 3);
   check("map({\"a\":1, \"b\":3}, x^2){\"b\"}", 9);
   check("map({\"a\":1, \"b\":3}, key+\"a\"){\"b\"}", "ba");
-  check("map({1, \"b\":3}, key+\"a\"){1}", "a");
-  check("map({1, \"b\":3}, key+\"a\"){\"b\"}", "ba");
+  check("map({1, 3}, key+\"a\"){1}", "a");
+  check("map({\"a\": 1, \"b\":3}, key+\"a\"){\"b\"}", "ba");
 
 
-  check("{1, b:2}.b", 2);
+  check("{a:1, b:2}.b", 2);
 
 
   check("reverse({\"a\":1, \"b\":4, \"c\":5}){1}", 5);
@@ -752,39 +942,6 @@ test("Vector aggregation", () => {
   check("collapse({\"a\": {\"x\": {\"j\": -3, \"k\":3},\"y\":{\"j\": 1, \"k\":7}}, \"b\":{\"x\":{\"j\": 3, \"k\":4},\"y\":{\"j\": 7, \"k\":-3}}, \"c\":{\"x\":{\"j\": 11, \"k\":1},\"y\":{\"j\": 2, \"k\":3}}}, {\"x\":0, \"y\":9})", {x: 19, y: 17});
   check("collapse({\"a\": {\"x\": {\"j\": -3, \"k\":3},\"y\":{\"j\": 1, \"k\":7}}, \"b\":{\"x\":{\"j\": 3, \"k\":4},\"y\":{\"j\": 7, \"k\":-3}}, \"c\":{\"x\":{\"j\": 11, \"k\":1},\"y\":{\"j\": 2, \"k\":3}}}, {\"a\": {\"j\":0, \"k\":9}, \"b\": {\"j\":1,\"k\":2}, \"c\": {\"j\":1,\"k\":2} }){\"a\"}", {j: -2, k: 10});
   check("collapse({'dogs': {'x': 1, 'y':2}, 'cats': {'x':3, 'y':4} },3)", 10);
-
-  check("'a'+2", "a2");
-  check("2+'a'", "2a");
-
-  check("if 1+1 > 1 then \n 10 \n end if", 10);
-  check("if 1+1>3 then\n10\nend if", 0);
-
-  check("if 1+1>1 then\n10\nelse\nx<-5\nx^2\nend if", 10);
-  check("if 1+1>3 then\n10\nelse\nx<-5\nx^2\nend if", 25);
-
-  check("if 1+1>1 then\n10\nelse if 4>3 then\n 6\nelse\nx<-5\nx^2\nend if", 10);
-  check("if 0>1 then\n10\nelse if 4>3 then\n 6\nelse\nx<-5\nx^2\nend if", 6);
-  check("if 0>1 then\n10\nelse if 2>3 then\n 6\nelse\nx<-5\nx^2\nend if", 25);
-
-  failure("{1cow}");
-
-  check("function xkk(a)\na<-a*2\na<-a*3\na\nend function\nxkk(4)", 24);
-  failure("function xkk(a)\njkk<-100\na<-a*2\na<-a*3\na\nend function\nxkk(4)\njkk");
-
-  check("1\n 2\n 3", 3);
-  check("1\n return 2\n 3", 2);
-  check("if true then\n 5\n end if\n return 6", 6);
-  check("if true then\n return 5\n end if\n return 6", 5);
-
-  check("function test()\n 1\n 2\n end function\n test()*3", 6);
-  check("function test()\n return 1\n 2\n end function\n test()*3", 3);
-
-  check("", 0);
-  check(" ", 0);
-  check("# abc\n \n\n/*43*/", 0);
-
-
-  failure("function a(x)\naVal <- 10\nb(x)\nend function\nfunction b(x)\nx+aVal\nend Function\na(2)");
 
   testConfig.globals = "";
 });
@@ -826,6 +983,7 @@ test("Misc functions", () => {
   check("s <- mean\ns(1,2,3)", 2);
   check("q(x) <- max(x)\n s <- q \n s({1,2,3})", 3);
   check("if true then\nxx<- median\nxx(1,2.1,3.5)\nend if", 2.1);
+  check("if true then\nxx<- median\nxx(1,2.1,3.5)\nelse\n\nend if", 2.1);
   failure("if true then\nxx<- median\nxx(1,2,3.5)\nend if\nxx(2,3,4.5)");
   check("xx <- mean\nif true then\nxx<- median\nxx(1,2,3.5)\nend if\nxx(2,3,4.5)", 3);
   check("function MakeCounter()\ncounter <- 0\nfunction InnerCounter()\ncounter <- counter+1\ncounter\nend function\ninnerCounter\nend function\nc <- makecounter()\nc2 <- makecounter()\nz<-{c(), c(), c2(), c2(), c2(), c()}\nz", [1, 2, 1, 2, 3, 3]);
@@ -858,6 +1016,13 @@ test("Misc functions", () => {
 
   check("z <- function(x) x^2\nz(3)", 9);
 
+  check("z <- function( a, b ) a+b\nz(3,2)", 5);
+
+  check("z <- function( a, b, c=2) a+b+c\nz(3,2)", 7);
+
+  check("function z( a, b, c=2)\na+b+c\nend function\nz(3,2)", 7);
+  check("function z( a , b , c , d = 2, e=3)\na+b+c\nend function\nz(3,2,1)", 6);
+
   check("q <- 'a' \n q.parent.moo <- 'moob' \n 'abc'.moo", "moob");
 
   failure("1: 2");
@@ -889,7 +1054,9 @@ test("Misc functions", () => {
   failure("if true then\n throw 'oops'\n end if\n 1");
   check("if false then\n throw 'oops'\n end if\n 1", 1);
   check("try\n 1\n 2\n catch err\n 3\n end try", 2);
+  check("try\n  catch err\n 3\n end try", 0);
   check("try\n 1\n throw 'oops!'\n 2\n catch err\n 3\n end try", 3);
+  check("try\n 1\n throw 'oops!'\n 2\n catch err\n \n end try", 0);
   check("try\n 1\n throw 'oops!'\n 2\n catch err\n err+'b'\n end try", "oops!b");
 
   testConfig.globals = "";
