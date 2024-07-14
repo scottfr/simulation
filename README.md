@@ -390,16 +390,40 @@ Instead, `simulation` supports vectors. Vectors can be used in place of regular 
 
 For example, `{1, 2, 3} * {1, 2, 3}` will return `{1, 4, 9}`. You can also name the elements of a vector. For example, `{cats: 10, dogs: 2} * {dogs: 3, cats: 20}` will return `{dogs: 6, cats: 200}`.
 
-Using vectors, we can modify our model above to simulate individual countries in North America without changing the model structure. We just need to define country specific populations and growth rates using vectors. We'll also add some units to our model too:
+Using vectors, we can modify our population model above to simulate individual countries in North America without changing the model structure. We just need to define country specific populations and growth rates using vectors. We'll add some units to our model too:
+
 
 ```javascript
-people.initial = "{usa: 320, canada: 38, mexico: 120}";
-people.units = "Millions";
+import { Model } from "simulation";
+import { plot } from "simulation-viz-console";
 
-growthRate.value = "{usa: 0.004, canada: 0.011, mexico: 0.011}";
-growthRate.units = "1 / Years";
 
-netGrowth.units = "Millions / Year";
+let m = new Model({
+  timeStart: 2020,
+  timeLength: 100,
+  timeUnits: "Years"
+});
+
+let people = m.Stock({
+  name: "People",
+  initial: "{usa: 320, canada: 38, mexico: 120}",
+  units: "Millions"
+});
+
+
+let growthRate = m.Variable({
+  name: "Growth Rate",
+  value: "{usa: 0.004, canada: 0.011, mexico: 0.011}",
+  units: "1 / Years"
+});
+
+let netGrowth = m.Flow(null, people, {
+  rate: "[People] * [Growth Rate]",
+  units: "Millions / Year"
+});
+
+m.Link(growthRate, netGrowth);
+
 
 plot(m.simulate(), [people]);
 ```
@@ -540,20 +564,18 @@ let results = model.simulate();
 If you use this package in your published research, please cite:
 
 ```
-@article{fortmann-roeInsightMakerGeneralpurpose2014,
-  title = {Insight {{Maker}}: {{A}} General-Purpose Tool for Web-Based Modeling \& Simulation},
-  shorttitle = {Insight {{Maker}}},
-  author = {{Fortmann-Roe}, Scott},
-  year = {2014},
-  month = sep,
-  journal = {Simulation Modelling Practice and Theory},
-  volume = {47},
-  pages = {28--45},
-  issn = {1569-190X},
-  doi = {10.1016/j.simpat.2014.03.013},
-  urldate = {2024-04-07},
-  abstract = {A web-based, general-purpose simulation and modeling tool is presented in this paper. The tool, Insight Maker, has been designed to make modeling and simulation accessible to a wider audience of users. Insight Maker integrates three general modeling approaches -- System Dynamics, Agent-Based Modeling, and imperative programming -- in a unified modeling framework. The environment provides a graphical model construction interface that is implemented purely in client-side code that runs on users' machines. Advanced features, such as model scripting and an optimization tool, are also described. Insight Maker, under development for several years, has gained significant adoption with currently more than 20,000 registered users. In addition to detailing the tool and its guiding philosophy, this first paper on Insight Maker describes lessons learned from the development of a complex web-based simulation and modeling tool.},
-  keywords = {Agent-Based Modeling,Modeling,Simulation,System Dynamics,Web-based technologies}
+@article{FORTMANNROE201428,
+title = {Insight Maker: A general-purpose tool for web-based modeling & simulation},
+journal = {Simulation Modelling Practice and Theory},
+volume = {47},
+pages = {28-45},
+year = {2014},
+issn = {1569-190X},
+doi = {https://doi.org/10.1016/j.simpat.2014.03.013},
+url = {https://www.sciencedirect.com/science/article/pii/S1569190X14000513},
+author = {Scott Fortmann-Roe},
+keywords = {Modeling, Simulation, Web-based technologies, System Dynamics, Agent-Based Modeling},
+abstract = {A web-based, general-purpose simulation and modeling tool is presented in this paper. The tool, Insight Maker, has been designed to make modeling and simulation accessible to a wider audience of users. Insight Maker integrates three general modeling approaches – System Dynamics, Agent-Based Modeling, and imperative programming – in a unified modeling framework. The environment provides a graphical model construction interface that is implemented purely in client-side code that runs on users’ machines. Advanced features, such as model scripting and an optimization tool, are also described. Insight Maker, under development for several years, has gained significant adoption with currently more than 20,000 registered users. In addition to detailing the tool and its guiding philosophy, this first paper on Insight Maker describes lessons learned from the development of a complex web-based simulation and modeling tool.}
 }
 ```
 
