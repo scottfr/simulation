@@ -2,7 +2,7 @@
 
 `simulation` is a multi-method simulation package for Node or the browser. Use it to create models for the environment, business, or other areas. For example, it can be used to create models of disease spread, population growth, or the adoption of a product in the marketplace.
 
-`simulation` support differential equation models (also called System Dynamics models) in addition to Agent Based Models, or any mixture of the two techniques.
+`simulation` supports differential equation models (also called System Dynamics models) in addition to Agent Based Models, or any mixture of the two techniques.
 
 In addition to building models directly with the package, `simulation` also supports importing and running models built with [Insight Maker](https://insightmaker.com).
 
@@ -59,9 +59,9 @@ let m = new Model({
 
 **Tip: Use VSCode or another editor that supports JSDoc type annotations. `simulation` makes extensive use of type annotations to indicate available options. Add `// @ts-check` to the top of a JavaScript file in VSCode to enable automatic type checking of the code, this will help catch errors.**
 
-This creates a model that will simulate 100 years starting at the year 2020.
+This creates a model that will simulate 100 years, starting at the year 2020.
 
-`simulation` models are composed out of building blocks called "primitives" In this model we're going to use three primitives:
+`simulation` models are composed out of building blocks called "primitives". In this model we're going to use three primitives:
 
 * A **Stock** to store the number of people in the world population. Generally, stocks store things like people, dollars, water, or anything else
 * A **Flow** to define the change in the population stock. Flows model the movement of material between stocks.
@@ -118,6 +118,48 @@ Which outputs:
 
 ![Population Growth Image](docs/images/pop_growth.png)
 
+Putting it all together we get the following. You can copy this into a `main.js` file, and run it with `node main.js`:
+
+```javascript
+import { Model } from "simulation";
+import { table, plot } from "simulation-viz-console";
+
+
+let m = new Model({
+  timeStart: 2020,
+  timeLength: 100,
+  timeUnits: "Years"
+});
+
+// Start with 7 billion people in the "people" stock
+let people = m.Stock({
+  name: "People",
+  initial: 7e9
+});
+
+// Use a net growth rate of 2% a year
+let growthRate = m.Variable({
+  name: "Growth Rate",
+  value: 0.02
+});
+
+// The population growth each year is the number of people times the growth rate
+// Please note that we refer to the value of other primitives in the model with the
+// [name] syntax.
+let netGrowth = m.Flow(null, people, {
+  rate: "[People] * [Growth Rate]"
+});
+
+// For the netGrowth flow to be able to reference the growthRate, we need to link the primitives
+m.Link(growthRate, netGrowth);
+
+
+let results = m.simulate();
+
+table(results, people);
+plot(results, people);
+```
+
 ### Modeling the spread of a disease
 
 Let's now look at a more complex model: disease spread. One simple way to model the spread of a disease is to assume there are three categories of people:
@@ -129,6 +171,10 @@ Let's now look at a more complex model: disease spread. One simple way to model 
 We'll use three stocks to represent these categories, and we'll use flows to move people between them.
 
 ```javascript
+import { Model } from "simulation";
+import { table, plot } from "simulation-viz-console";
+
+
 let m = new Model();
 
 // Start with 1,000 healthy, susceptible people
@@ -165,13 +211,13 @@ m.Flow(i, r, {
   name: "Recovery",
   rate: "[Infected] * 0.015"
 });
-```
 
-Let's take a look at the results for this model. We can see there is an initial spike in infections that declines as people move to the *Recovered*, immune state.
 
-```javascript
 plot(m.simulate(), [s, i, r]);
 ```
+
+Taking a look at the results for this model. We can see there is an initial spike in infections that declines as people move to the *Recovered*, immune state.
+
 
 ![Disease Dynamics Image](docs/images/sir_disease.png)
 
@@ -190,6 +236,10 @@ For this model, we're going to use a couple new types of primitives:
 * **Transition** A Transition moves agents between states. For example, you could have a model with "Employed" and "Unemployed" states. When a person is hired, they are transitioned from the unemployed to the employed states. We'll use a transition to move agents between health states. 
 
 ```javascript
+import { Model } from "simulation";
+import { table, plot } from "simulation-viz-console";
+
+
 let m = new Model();
 
 // Define the person agent for our model
@@ -253,13 +303,12 @@ let infectedCount = m.Variable({
   value: "[Population].FindState([Infected]).Count()"
 });
 m.Link(population, infectedCount);
-```
 
-We can now look at the results:
 
-```javascript
 plot(m.simulate(), [healthyCount, infectedCount]);
 ```
+
+Here are typical results you might see:
 
 ![ABM Disease](docs/images/abm_disease.png)
 
@@ -271,12 +320,16 @@ In our models above, this was implicit. However, it can be useful to explicitly 
 
 `simulation` has a large number of common units built-in, but you can also define your own custom units.
 
-Let's look at quick example that models the water level in a lake. Here `simulation` checks the units in the model and also transparently converts between units like `acre feet`, `gallons`, `months`, `years` and `hours`.
+Let's look at a quick example that models the water level in a lake. Here `simulation` checks the units in the model and also transparently converts between units like `acre feet`, `gallons`, `months`, `years` and `hours`.
 
 Also note the use of `{4 year}` in the evaporation equation. The `{123 units}` syntax allows you to use numbers with units directly in your equations. So you can do things like `{10 people}` or `{10 people/year^2}`.
 
 
 ```javascript
+import { Model } from "simulation";
+import { table, plot } from "simulation-viz-console";
+
+
 let m = new Model({
   timeUnits: "Months",
   timeLength: 72
@@ -470,9 +523,39 @@ import { loadInsightMaker } from "simulation";
 
 let model = loadInsightMaker("<Model Text....>");
 
+// You may modify the loaded model before running it
+
+// In this case we'll change the value of the variable primitive "Growth Rate"
+let rate = model.getVariable(v => v.name === "Growth Rate");
+
+// Give it a random value between 0 and 3;
+rate.value = Math.random() * 3;
+
+// run the simulation
 let results = model.simulate();
 ```
 
+# Citation
+
+If you use this package in your published research, please cite:
+
+```
+@article{fortmann-roeInsightMakerGeneralpurpose2014,
+  title = {Insight {{Maker}}: {{A}} General-Purpose Tool for Web-Based Modeling \& Simulation},
+  shorttitle = {Insight {{Maker}}},
+  author = {{Fortmann-Roe}, Scott},
+  year = {2014},
+  month = sep,
+  journal = {Simulation Modelling Practice and Theory},
+  volume = {47},
+  pages = {28--45},
+  issn = {1569-190X},
+  doi = {10.1016/j.simpat.2014.03.013},
+  urldate = {2024-04-07},
+  abstract = {A web-based, general-purpose simulation and modeling tool is presented in this paper. The tool, Insight Maker, has been designed to make modeling and simulation accessible to a wider audience of users. Insight Maker integrates three general modeling approaches -- System Dynamics, Agent-Based Modeling, and imperative programming -- in a unified modeling framework. The environment provides a graphical model construction interface that is implemented purely in client-side code that runs on users' machines. Advanced features, such as model scripting and an optimization tool, are also described. Insight Maker, under development for several years, has gained significant adoption with currently more than 20,000 registered users. In addition to detailing the tool and its guiding philosophy, this first paper on Insight Maker describes lessons learned from the development of a complex web-based simulation and modeling tool.},
+  keywords = {Agent-Based Modeling,Modeling,Simulation,System Dynamics,Web-based technologies}
+}
+```
 
 # License
 

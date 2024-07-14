@@ -146,10 +146,6 @@ export class Simulator {
 
     this.stochastic = false;
 
-
-    /** @type {Object<string, Object<string, import("./Primitives").Placeholder>>}*/
-    this.allPlaceholders = {};
-
     /** @type {number} */
     this.RKOrder = undefined;
 

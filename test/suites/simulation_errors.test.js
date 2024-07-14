@@ -391,6 +391,7 @@ test("Invalid name", () => {
   expect(() => m.simulate()).toThrow(/Invalid equation syntax/);
 });
 
+
 test("Smooth errors due to wrong number of parameters", () => {
   let m = new Model();
   let v = m.Variable({
@@ -434,4 +435,46 @@ test("Invalid simulation units", () => {
   // @ts-ignore
   m.timeUnits = "";
   expect(() => m.simulate()).toThrow(/must set the time units/);
+});
+
+
+test("Invalid ifThenElse", () => {
+  let m = new Model();
+  m.Variable({
+    value: `IfThenElse({
+      x: 4
+    }, {
+      x: {1}
+    }, {
+      x: {2}
+    })`
+  });
+
+  expect(() => m.simulate()).toThrow(/Keys do not match/);
+});
+
+
+test("Ambiguous primitive names", () => {
+  let m = new Model();
+
+  let x1 = m.Variable({
+    name: "x",
+    value: "1"
+  });
+  let x2= m.Variable({
+    name: "x",
+    value: "2"
+  });
+  let y = m.Variable({
+    name: "y",
+    value: "[x]"
+  });
+
+  m.Link(x1, y);
+
+  let res = m.simulate();
+  expect(res.value(y)).toBe(1);
+
+  m.Link(x2, y);
+  expect(() => m.simulate()).toThrow(/\[x\] is ambiguous/);
 });

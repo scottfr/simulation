@@ -965,6 +965,8 @@ describe.each([
       let m = new Model({ algorithm });
 
 
+      // alpha is non-negative
+
       let s = m.Stock({
         name: "My Stock"
       });
@@ -972,19 +974,96 @@ describe.each([
         name: "My Stock 2"
       });
       let f = m.Flow(s, s2, {
-        name: "My Flow"
+        name: "My Flow",
+        nonNegative: false
       });
 
       s.initial = 10;
-      s2.initial = 0;
+      s2.initial = 1;
       f.rate = 1;
       let res = m.simulate();
       expect(res.series(s)[20]).toBe(-10);
-      expect(res.series(s2)[20]).toBe(20);
+      expect(res.series(s2)[20]).toBe(21);
       s.nonNegative = true;
       res = m.simulate();
       expect(res.series(s)[20]).toBe(0);
-      expect(res.series(s2)[20]).toBe(10);
+      expect(res.series(s2)[20]).toBe(11);
+
+      // omega is non-negative
+
+      s.nonNegative = false;
+      s2.nonNegative = true;
+      f.rate = -1;
+
+      res = m.simulate();
+      expect(res.series(s)[20]).toBe(11);
+      expect(res.series(s2)[20]).toBe(0);
+
+      // both are non-negative
+
+      s.nonNegative = true;
+      
+      res = m.simulate();
+      expect(res.series(s)[20]).toBe(11);
+      expect(res.series(s2)[20]).toBe(0);
+
+
+      // Vectors
+
+
+      s.initial = "{5, 6}";
+      s2.initial = "{1, 1}";
+      f.rate = "{1, 1}";
+      s.nonNegative = false;
+      s2.nonNegative = false;
+
+
+      res = m.simulate();
+      expect(res.series(s)[20][0]).toBe(-15);
+      expect(res.series(s)[20][1]).toBe(-14);
+      expect(res.series(s2)[20][0]).toBe(21);
+      expect(res.series(s2)[20][1]).toBe(21);
+
+      // alpha is non-negative
+
+      s.nonNegative = true;
+
+      res = m.simulate();
+      expect(res.series(s)[20][0]).toBe(0);
+      expect(res.series(s)[20][1]).toBe(0);
+      expect(res.series(s2)[20][0]).toBe(6);
+      expect(res.series(s2)[20][1]).toBe(7);
+
+      // omega is non-negative
+
+      s.nonNegative = false;
+      s2.nonNegative = true;
+
+      f.rate = "{-1, -1}";
+      res = m.simulate();
+      expect(res.series(s)[20][0]).toBe(6);
+      expect(res.series(s)[20][1]).toBe(7);
+      expect(res.series(s2)[20][0]).toBe(0);
+      expect(res.series(s2)[20][1]).toBe(0);
+
+      // both are non-negative
+
+      s.nonNegative = true;
+      res = m.simulate();
+      expect(res.series(s)[20][0]).toBe(6);
+      expect(res.series(s)[20][1]).toBe(7);
+      expect(res.series(s2)[20][0]).toBe(0);
+      expect(res.series(s2)[20][1]).toBe(0);
+
+      // clamp some elements, not others
+
+      f.rate = "{1, -1}";
+      res = m.simulate();
+      expect(res.series(s)[20][0]).toBe(0);
+      expect(res.series(s)[20][1]).toBe(7);
+      expect(res.series(s2)[20][0]).toBe(6);
+      expect(res.series(s2)[20][1]).toBe(0);
+
     });
 
 
@@ -1222,7 +1301,7 @@ describe.each([
       });
 
       s.initial = 10;
-      f.rate = "years-10";
+      f.rate = "years - 10";
       f.nonNegative = false;
       let res = m.simulate();
       expect(res.value(s, 0)).toBe(10);
@@ -1234,6 +1313,25 @@ describe.each([
       res = m.simulate();
       expect(res.series(s)[2]).toBe(10);
       expect(res.series(f)[1]).toBe(0);
+
+      
+      // Vectors
+
+      s.initial = "{10, 10}";
+      f.rate = "{1, -1}";
+      f.nonNegative = false;
+      res = m.simulate();
+      expect(res.series(s)[2][0]).toBe(12);
+      expect(res.series(s)[2][1]).toBe(8);
+      expect(res.series(f)[1][0]).toBe(1);
+      expect(res.series(f)[1][1]).toBe(-1);
+
+      f.nonNegative = true;
+      res = m.simulate();
+      expect(res.series(s)[2][0]).toBe(12);
+      expect(res.series(s)[2][1]).toBe(10);
+      expect(res.series(f)[1][0]).toBe(1);
+      expect(res.series(f)[1][1]).toBe(0);
     });
 
 
@@ -1280,6 +1378,19 @@ describe.each([
 
       let res = m.simulate();
       expect(200).toBe(res.series(c)[60]);
+
+      // conflicting names aren't an issue
+      
+      let p2 = m.Variable({
+        name: "Param"
+      });
+      m.Link(p2, c);
+      p2.value = "years+80";
+
+      res = m.simulate();
+      expect(200).toBe(res.series(c)[60]);
+
+      // time source
 
       c.input = "Time";
 

@@ -11,6 +11,7 @@ import antlr from "../../vendor/antlr4-all.js";
 import FormulaLexer from "./grammar/FormulaLexer.js";
 import FormulaParser from "./grammar/FormulaParser.js";
 import { toHTML } from "../Utilities.js";
+import { DUPLICATE_PRIMITIVE_NAMES } from "../Modeler.js";
 
 
 /**
@@ -2950,7 +2951,7 @@ trimEvalMap["FALSE"] = function () {
  * @param {import("../Simulator").Simulator} simulate
  */
 trimEvalMap["STRING"] = function (node, scope, simulate) {
-  let sub = node.origText.substr(1, node.origText.length - 2);
+  let sub = node.origText.slice(1, node.origText.length - 1);
   let s;
   if (node.origText[0] === "\"") {
     s = sub.replace(/\\\\/g, "\\\\TEMPTXT\\\\").replace(/\\"/g, "\"").replace(/\\'/g, "'").replace(/\\t/g, "\t").replace(/\\b/g, "\b").replace(/\\f/g, "\f").replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\\\TEMPTXT\\\\/g, "\\");
@@ -3081,14 +3082,19 @@ trimEvalMap["FLOAT"] = trimEvalMap["INTEGER"];
  */
 trimEvalMap["PRIMITIVE"] = function (node, scope) {
   let res;
-  if (node.text.substr(0, 2) === "[[") {
-    res = new PrimitiveStore(scope.get(node.text.substr(2, node.text.length - 4)), "totalValue");
+  if (node.text.slice(0, 2) === "[[") {
+    res = new PrimitiveStore(scope.get(node.text.slice(2, node.text.length - 2)), "totalValue");
   } else {
-    res = new PrimitiveStore(scope.get(node.text.substr(1, node.text.length - 2)), "object");
+    res = new PrimitiveStore(scope.get(node.text.slice(1, node.text.length - 1)), "object");
   }
   if (res.primitive === undefined) {
     throw new ModelError(`The primitive <i>${toHTML(node.origText)}</i> could not be found.`, {
       code: 7056
+    });
+  }
+  if (res.primitive === DUPLICATE_PRIMITIVE_NAMES) {
+    throw new ModelError(`The primitive name <i>${toHTML(node.origText)}</i> is ambiguous and could refer to multiple primitives.`, {
+      code: 7067
     });
   }
   return res;

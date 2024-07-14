@@ -225,6 +225,18 @@ test("Comparisons", () => {
   check("5 <= 4", 0);
   check("5 < 4", 0);
   check("5 > 4", 1);
+  check("5 == 5", 1);
+  check("5 == 10", 0);
+  check("5 != 5", 0);
+  check("5 != 10", 1);
+  check("5 > 3", 1);
+  check("5 > 7", 0);
+  check("5 >= 5", 1);
+  check("5 >= 7", 0);
+  check("5 < 7", 1);
+  check("5 < 3", 0);
+  check("5 <= 5", 1);
+  check("5 <= 3", 0);
 });
 
 

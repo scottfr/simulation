@@ -122,7 +122,7 @@ export function RandExp(simulate, lambda = null) {
 
   isNormalNumber(lambda, "RandExp", "lambda");
 
-  return -(1 / lambda) * Math.log(Rand(simulate));
+  return -Math.log(Rand(simulate)) / lambda;
 }
 
 

@@ -129,6 +129,7 @@ describe.each([
       t.trigger = "Probability";
       t.value = "IfThenElse(years < 2, 0, 1)";
 
+
       res = m.simulate();
       expect(res.series(s)[0]).toBe(1);
       expect(res.series(s2)[0]).toBe(0);
@@ -214,8 +215,11 @@ describe.each([
       expect(res.series(s)[10]).toBe(0);
       expect(res.series(s2)[10]).toBe(1);
 
+
       t.value = 2;
       expect(() => m.simulate()).toThrow();
+
+
 
       t.value = "-1";
       expect(() => m.simulate()).toThrow();
@@ -898,6 +902,13 @@ describe.each([
       expect(res.series(v)[0]).toBe(9);
       expect(res.series(v2)[8]).toBe(1);
 
+      pop.networkFunction = "value(a, [Var]) > value(b, [Var])";
+      res = m.simulate();
+      expect(res.series(v)[0]).toBe(0);
+      expect(res.series(v2)[0]).toBe(0);
+
+
+      pop.networkFunction = "ifThenElse(index(a)=1 || index(b)=1, true, false)";
 
       let exogAdder = m.Action({
         name: "Adder"

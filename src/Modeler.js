@@ -164,9 +164,6 @@ function innerRunSimulation(simulate, config) {
 
   bootCalc(simulate);
 
-
-  simulate.allPlaceholders = {};
-
   /** @type {string} */
   let timeUnits = simulate.model.timeUnits;
   if (!timeUnits) {
@@ -750,14 +747,28 @@ function innerRunSimulation(simulate, config) {
 
       // Max size for a JS array is a 32-bit integer
       const MAX_ARRAY_LENGTH = 4294967294;
-      if (count.value > MAX_ARRAY_LENGTH) {
-        throw new ModelError(`You have ${count} time steps, maximum is ${MAX_ARRAY_LENGTH}.`,
+      function showRangeErrorMessage() {
+        throw new ModelError(`You have ${count.value.toLocaleString()} time steps, you must reduce this. Generally 1,000 to 10,000 time steps is sufficient even for large simulations.`,
           {
             code: 9108
           });
       }
-      for (let i = 0; i <= count.value; i++) {
-        simulate.displayInformation.times.push(plus(model.timeStart, mult(model.timeStep, new Material(i))).value);
+
+      if (count.value > MAX_ARRAY_LENGTH) {
+        showRangeErrorMessage();
+      }
+      
+      try {
+        for (let i = 0; i <= count.value; i++) {
+          simulate.displayInformation.times.push(plus(model.timeStart, mult(model.timeStep, new Material(i))).value);
+        }
+      } catch (err) {
+        if (err instanceof RangeError) {
+          // The max size may be samller than MAX_ARRAY_LENGTH due to memory constraints
+          showRangeErrorMessage();
+        } else {
+          throw err;
+        }
       }
 
 
@@ -1550,9 +1561,10 @@ export function linkPrimitive(primitive, dna, simulate) {
       } else {
         let source = dna.source;
         let sourceSet = false;
-        for (let neighbor of myNeighborhood.keys()) {
-          if (source === myNeighborhood.get(neighbor).id) {
-            primitive.setSource(myNeighborhood.get(neighbor));
+        let neighborIds = getPrimitiveNeighborhood(primitive, dna, simulate, [], true);
+        for (let neighborId of neighborIds.keys()) {
+          if (source === neighborId) {
+            primitive.setSource(neighborIds.get(neighborId));
             sourceSet = true;
             break;
           }
@@ -1794,15 +1806,17 @@ function buildPlacements(submodel, simulate) {
 }
 
 
+export const DUPLICATE_PRIMITIVE_NAMES = Symbol("DUPLICATE_PRIMITIVE_NAMES");
 /**
  * @param {import("./Primitives").SPrimitive} primitive
  * @param {DNA} dna
  * @param {import("./Simulator").Simulator} simulate
  * @param {Primitive[]} extraLinksPrimitives
+ * @param {boolean=} useIdKeys - use id's as the keys in the returned Map instead of names
  *
  * @returns {Map<string, import('./Primitives').SPrimitive>}
  */
-export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPrimitives) {
+export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPrimitives, useIdKeys = false) {
   let neighbors = dna.primitive.neighbors();
   if (extraLinksPrimitives) {
     for (let link of extraLinksPrimitives) {
@@ -1813,8 +1827,8 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
     }
   }
 
-  /** @type {Object<string, Placeholder>} */
-  let placeholders = simulate.allPlaceholders[dna.id] ? simulate.allPlaceholders[dna.id] : {};
+  /** @type {Map<string, Placeholder>} */
+  let placeholders = new Map();
 
   /** @type {Map} */
   let ns = new Map([[
@@ -1824,38 +1838,64 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
 
   if (primitive instanceof SPopulation) {
     for (let dna of primitive.DNAs) {
-      placeholders[dna.name.toLowerCase()] = new Placeholder(dna, primitive, simulate);
+      placeholders.set(dna.name.toLowerCase(), new Placeholder(dna, primitive, simulate));
     }
   }
 
   for (let neighbor of neighbors) {
     let item = neighbor.item;
+    function addNeighbor(name, item) {
+      if (useIdKeys) {
+        ns.set(item.id, item);
+        return;
+      }
+
+      // If it's a placeholder, we don't flag conflicts
+      // non-placeholders take precedence over placeholders and non-placeholders
+      // can be used in place of placeholders during the simulation.
+      let isPlaceholder = item instanceof Placeholder;
+      if (ns.has(name) && !(ns.get(name) instanceof Placeholder)) {
+        if (ns.get(name) !== item) {
+          if (!isPlaceholder) {
+            ns.set(name, DUPLICATE_PRIMITIVE_NAMES);
+          }
+        }
+      } else {
+        ns.set(name, item);
+      }
+
+      if (!isPlaceholder) {
+        if (primitive instanceof SFlow || primitive instanceof STransition) {
+          if (dna.targetId === item.id) {
+            ns.set("[omega", item);
+          } else if (dna.sourceId === item.id) {
+            ns.set("[alpha", item);
+          }
+        }
+      }
+    }
+
     if (item instanceof Population) {
-      ns.set(primitive.simulate.simulationModel.submodels[item.id].dna.name.toLowerCase(),  primitive.simulate.simulationModel.submodels[item.id]);
+      addNeighbor(primitive.simulate.simulationModel.submodels[item.id].dna.name.toLowerCase(), primitive.simulate.simulationModel.submodels[item.id]);
 
       for (let dna of primitive.simulate.simulationModel.submodels[item.id].DNAs) {
-        let key = dna.name.toLowerCase();
-        if (!ns.has(key)) {
-          ns.set(key, new Placeholder(dna, primitive, simulate));
-        }
+        addNeighbor(dna.name.toLowerCase(), new Placeholder(dna, primitive, simulate));
       }
     } else if (neighbor.type !== "agent") {
       let found = false;
-      /** @type {string} */
-      let neighborhoodName;
       if (primitive.container) {
         if (primitive.container.childrenId[item.id]) {
-          neighborhoodName = primitive.container.childrenId[item.id].dna.name.toLowerCase();
-
-          ns.set(neighborhoodName,  primitive.container.childrenId[item.id]);
+          addNeighbor(
+            primitive.container.childrenId[item.id].dna.name.toLowerCase(),
+            primitive.container.childrenId[item.id]
+          );
           found = true;
         }
       }
       if (!found) {
         if (primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id]) {
-          neighborhoodName = primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id].dna.name.toLowerCase();
-
-          ns.set(neighborhoodName, primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id]);
+          
+          addNeighbor(primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id].dna.name.toLowerCase(), primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id]);
           found = true;
         }
       }
@@ -1876,27 +1916,16 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
           });
         }
       }
-
-      if (primitive instanceof SFlow || primitive instanceof STransition) {
-        if (ns.has(neighborhoodName)) {
-          if (dna.targetId === ns.get(neighborhoodName).id) {
-            ns.set("[omega", ns.get(neighborhoodName));
-          } else if (dna.sourceId === ns.get(neighborhoodName).id) {
-            ns.set("[alpha", ns.get(neighborhoodName));
-          }
-        }
-      }
     }
   }
 
 
-  for (let key in placeholders) {
+  for (let key of placeholders.keys()) {
     if (!ns.has(key)) {
-      ns.set(key, placeholders[key]);
+      ns.set(key, placeholders.get(key));
     }
   }
 
-  simulate.allPlaceholders[dna.id] = placeholders;
 
   return ns;
 }

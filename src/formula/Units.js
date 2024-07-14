@@ -80,6 +80,7 @@ export class UnitStore {
 
     this.exponents = exponents;
 
+
     /** @type {number} */
     this.toBase = null;
 
@@ -377,7 +378,7 @@ const titleCaseReg = /\w\S*/g;
  * @returns {string}
  */
 function titleCaseFunc(txt) {
-  return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+  return txt[0].toUpperCase() + txt.slice(1).toLowerCase();
 }
 
 

@@ -218,10 +218,10 @@ export class Primitive {
     return res;
 
     /**
-      * @param {Primitive} agent
-      * @param {boolean=} linkHidden
-      * @returns {NeighborhoodEntry[]}
-      */
+     * @param {Primitive} agent
+     * @param {boolean=} linkHidden
+     * @returns {NeighborhoodEntry[]}
+     */
     function getAgentItems(agent, linkHidden) {
       /** @type NeighborhoodEntry[]} */
       let res = [];

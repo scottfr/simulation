@@ -864,6 +864,8 @@ export function updateTrigger(clear) {
               return;
             }
           } else {
+            // v is the probability of at least one event happening in the time period
+            // we use the exponential distribution to determine the time until the next event
             let l = -Math.log(1 - v);
             t = new Material(RandExp(this.simulate, l), this.simulate.timeUnits);
           }
@@ -2089,6 +2091,8 @@ export class SFlow extends SPrimitive {
         if (this.omega !== null && this.omega.dna.nonNegative) {
           let modifier;
           try {
+            // Omega + Flow: value(s) will be negative if we need to make
+            // an adjustment to maintain non-negativity
             modifier = plus(toNum(this.omega.level), rate);
           } catch (err) {
             throw new ModelError(`Incompatible units for flow <i>[${toHTML(this.dna.name)}]</i> and connected stock <i>[${toHTML(this.omega.dna.name)}]</i>. Stock has units of <i>${this.omega.dna.units ? this.omega.dna.units.toString() : "unitless"}</i>. The flow should have the equivalent units divided by some time unit such as Years.`, {
@@ -2100,6 +2104,9 @@ export class SFlow extends SPrimitive {
           if (modifier instanceof Vector) {
             modifier.recurseApply((x) => {
               if (x.value < 0) {
+                // Added too much to the omega.
+                // Set the modifier so that the applied flow will result
+                // in a stock value of 0
                 return x;
               } else {
                 return new Material(0, x.units);
@@ -2116,6 +2123,8 @@ export class SFlow extends SPrimitive {
         if (this.alpha !== null && this.alpha.dna.nonNegative) {
           let modifier;
           try {
+            // Alpha - Flow: value(s) will be negative if we need to make
+            // an adjustment to maintain non-negativity
             modifier = minus(toNum(this.alpha.level), rate);
           } catch (err) {
             throw new ModelError(`Incompatible units for flow <i>[${toHTML(this.dna.name)}]</i> and connected stock <i>[${toHTML(this.alpha.dna.name)}]</i>. Stock has units of <i>${this.alpha.dna.units ? this.alpha.dna.units.toString() : "unitless"}</i>. The flow should have the equivalent units divided by some time unit such as Years.`, {
@@ -2127,13 +2136,15 @@ export class SFlow extends SPrimitive {
           if (modifier instanceof Vector) {
             modifier.recurseApply((x) => {
               if (x.value < 0) {
+                // Withdrew too much from the alpha.
+                // Set the modifier so that the applied flow will result
+                // in a stock value of 0
                 return x;
               } else {
                 return new Material(0, x.units);
               }
             });
-            rate = minus(rate, modifier);
-            rate = minus(rate, modifier);
+            rate = plus(rate, modifier);
           } else {
             if (modifier.value < 0) {
               rate = toNum(this.alpha.level);

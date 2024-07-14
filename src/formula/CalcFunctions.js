@@ -362,6 +362,12 @@ export function createFunctions(simulate) {
         return test.combine(val, testFn);
       }
 
+      if (!Array.isArray(val)) {
+        throw new ModelError("Keys do not match for vectorized IfThenElse().", {
+          code: 6093
+        });
+      }
+
       if (trueValue(test)) {
         return val[0];
       } else {
