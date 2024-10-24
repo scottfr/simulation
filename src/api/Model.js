@@ -5,7 +5,7 @@ import { nodeBase } from "../Constants.js";
 import { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder } from "./Blocks.js";
 import { Results } from "./Results.js";
 import { SimulationError } from "./SimulationError.js";
-
+export { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder };
 
 
 /**
