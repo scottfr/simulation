@@ -359,6 +359,26 @@ export class ValuedPrimitive extends Primitive {
 }
 
 
+/**
+ * @typedef {object} GhostConfig
+ * @property {Stock|Variable|Converter=} source
+ */
+export class Ghost extends Primitive {
+  /**
+   * @return {GhostConfig["source"]}
+   */
+  get source() {
+    const sourceId = this._node.getAttribute("Source")
+    return /** @type {Stock} */ this.model.find(p => p.id == sourceId)[0]
+  }
+  /**
+   * @param {GhostConfig["source"]} node
+   */
+  set source(node) {
+    this._node.setAttribute("Source", node.id)
+  }
+}
+
 
 /**
  * @typedef {object} StockConfig
