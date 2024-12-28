@@ -223,7 +223,7 @@ export class Primitive {
      * @returns {NeighborhoodEntry[]}
      */
     function getAgentItems(agent, linkHidden) {
-      /** @type NeighborhoodEntry[]} */
+      /** @type {NeighborhoodEntry[]} */
       let res = [];
       if ((agent instanceof Population) && agent.agentBase) {
         let items = agent.agentBase.children();
@@ -312,7 +312,7 @@ export class ValuedPrimitive extends Primitive {
   }
 
   /**
-   * @return {ValuedConfig["units"]}
+   * @param {ValuedConfig["units"]} value
    */
   set units(value) {
     this._node.setAttribute("Units", value);
@@ -351,7 +351,7 @@ export class ValuedPrimitive extends Primitive {
   }
 
   /**
-   * @return {ValuedConfig["external"]}
+   * @param {ValuedConfig["external"]} value
    */
   set external(value) {
     this._node.setAttribute("ShowSlider", value);
@@ -453,7 +453,7 @@ export class Variable extends ValuedPrimitive {
  * @typedef {object} ConverterConfig
  * @property {"Discrete"|"Linear"=} interpolation
  * @property {"Time"|ValuedPrimitive=} input
- * @property {{x: number, y: number}[]=} data
+ * @property {{x: number, y: number}[]=} values
  */
 
 export class Converter extends ValuedPrimitive {
@@ -473,7 +473,7 @@ export class Converter extends ValuedPrimitive {
 
 
   /**
-   * @return {ConverterConfig["data"]}
+   * @return {ConverterConfig["values"]}
    */
   get values() {
     return this._node.getAttribute("Data").split(";").map(row => {
@@ -504,7 +504,7 @@ export class Converter extends ValuedPrimitive {
   }
 
   /**
-   * @param {ConverterConfig["data"]} value
+   * @param {ConverterConfig["values"]} value
    */
   set values(value) {
     this._node.setAttribute("Data", value.map(x => x.x + "," + x.y).join(";"));

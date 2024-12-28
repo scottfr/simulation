@@ -430,6 +430,78 @@ plot(m.simulate(), [people]);
 
 ![Population Countries](docs/images/population_countries.png)
 
+
+## Interactive simulations
+
+When building interactive simulations, you can adjust values within the simulation while it is running.
+
+To do so, use the `simulateAsync` method of a `Model`. `simulateAsync` returns a promise that resolves to the completed simulation results or rejects with an error.
+
+`simulateAsync` takes a single parameter containing an object with an async `onPause` function. `onPause` is awaited whenever the simulation is paused. You can specify how often the simulation is paused with the `timePause` model property (set it to the same value as the time step to pause each time step) or by calling the `pause()` function within the simulation. 
+
+When `onPause` is called, it is passed the current simulation state along with a `setValue(primitive, value)` method. Calling `setValue` sets the current value of `primitive` to `value`.
+
+Here is an example of an interactive simulation where the user decides how much water flows into a bucket each time step:
+
+
+```javascript
+import { Model } from "simulation";
+import { plot } from "simulation-viz-console";
+import readline from 'readline';
+
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+function getNumber(prompt) {
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      resolve(answer);
+    });
+  });
+};
+
+
+let m = new Model({
+  timeStart: 2020,
+  timeLength: 5,
+  timeUnits: "Years",
+  timeStep: 1,
+  timePause: 1 // Pause the simulation each year
+});
+
+
+let bucket = m.Stock({
+  name: "Bucket",
+  initial: 0
+});
+
+
+let inflow = m.Flow(null, bucket, {
+  name: "Inflow",
+  rate: 0
+});
+
+
+let results = await m.simulateAsync({
+  onPause: async (simulation) => {
+    console.log(`[Time: ${simulation.time}; Current bucket volume: ${simulation.results.value(bucket, simulation.time)}]`);
+
+    let newRate = await getNumber("Enter the new inflow rate as a number (e.g. 5 or 2.7): ");
+
+    simulation.setValue(inflow, newRate); 
+  }
+});
+
+
+plot(results, [inflow, bucket]);
+
+process.exit();
+```
+
+
 ## Equations
 
 `simulation` uses a DSL for its equations. This allows us to cleanly implement features like built-in units and vectors.

@@ -41,6 +41,79 @@ test("Auto function vectorization", () => {
 });
 
 
+test("Custom units and unitless", () => {
+  let m = new Model();
+
+  let variable = m.Variable({
+    name: "Variable"
+  });
+
+
+  variable.value = "1 + {1 hours/minutes}";
+
+  let res = m.simulate();
+  expect(res.value(variable)).toBe(61);
+
+
+  variable.value = "{1 hours/minutes} + 1";
+
+  res = m.simulate();
+  expect(res.value(variable)).toBe(61);
+
+
+  variable.value = "1 + {10 customs}";
+  expect(() => m.simulate()).toThrow(/Incompatible units/);
+
+  // set "customs" to unitless equivalent
+  m.customUnits = [
+    {
+      name: "customs",
+      scale: 1,
+      target: "foo / foo"
+    }
+  ];
+
+  res = m.simulate();
+  expect(res.value(variable)).toBe(11);
+
+  variable.units = "customs";
+  res = m.simulate();
+  expect(res.value(variable)).toBe(11);
+
+  m.customUnits = [
+    {
+      name: "customs",
+      scale: 1,
+      target: "meters / centimeters"
+    }
+  ];
+
+
+  variable.units = "customs";
+  variable.value = "{11 customs}";
+  res = m.simulate();
+  expect(res.value(variable)).toBe(11);
+
+
+  variable.units = "unitless";
+  variable.value = "{11 customs}";
+  res = m.simulate();
+  expect(res.value(variable)).toBe(1100);
+
+
+  variable.units = "custom";
+  variable.value = "11";
+  res = m.simulate();
+  expect(res.value(variable)).toBe(11);
+
+
+  variable.units = "meters / centimeters";
+  variable.value = "11";
+  res = m.simulate();
+  expect(res.value(variable)).toBe(11);
+});
+
+
 test("Comments", () => {
 
   check("2+2#abc", 4);
@@ -214,6 +287,13 @@ test("Rounding", () => {
 });
 
 
+test("Constants", () => {
+  check("round(pi * 1000000)", Math.round(Math.PI * 1000000));
+  check("round(e * 1000000)", Math.round(Math.E * 1000000));
+  check("round(phi * 1000000)", Math.round(1.61803399 * 1000000));
+});
+
+
 test("Comparisons", () => {
   check("! 1", 0);
   check("! 0", 1);
@@ -349,6 +429,7 @@ test("Misc", () => {
 
   check("magnitude({3,4})", 5);
   failure("magnitude(true)");
+  failure("magnitude(7)");
 
   check("1e10", 10000000000);
   check("1.e10", 10000000000);
@@ -589,10 +670,24 @@ test("Vectors", () => {
 
   check("5 = 500", 0);
   check("{5 meters} = {500 centimeters}", 1);
-  check("{5 meters} = {500 sheep}", 0);
-  check("{5 meters} = 500", 0);
-  check("{5 meters} = 5", 0);
-  failure( "{5 meters} > 5");
+  check("1 = {100 centimeters/meters}", 1);
+  check("{100 centimeters/meters} = 1", 1);
+  failure("{5 meters} = {500 sheep}", "Incompatible units");
+  failure("{5 meters} = 500", "Incompatible units");
+  failure("{0 meters} = 0", "Incompatible units");
+  failure("{0 meters} = {0 cows}", "Incompatible units");
+  failure("{0 meters} <> 0", "Incompatible units");
+  failure("{1 meters} = 0", "Incompatible units");
+  failure("{1 meters} <> 0", "Incompatible units");
+  failure("{0 meters} = 1", "Incompatible units");
+  failure("{0 meters} <> 1", "Incompatible units");
+  failure("{5 meters} = 5", "Incompatible units");
+  failure( "{5 meters} > 5", "Incompatible units");
+
+
+  // should suggest changing
+  failure("{0 meters} <> 1", "Consider");
+  failure("2 + {0 meters}", "Consider");
 
   check("{5 meters} > {500 centimeters}", 0);
   check("{600 centimeters} > {5 meters}", 1);
@@ -638,6 +733,7 @@ test("Vectors", () => {
   failure( "repeat(x+1, {3 cows})", "must be unitless");
   failure( "repeat(x+1, 'cat')", "must be a Number");
   failure( "repeat(x+1, true)", "must be a Number");
+  failure( "repeat(x+1, -2)", "non-negative");
 
   check("repeat(x+1, {'a','b','c'}){'b'}",  3);
   failure( "repeat(x+1, {1, 2})", "all strings");
@@ -726,12 +822,12 @@ test("Units", () => {
   check("{2 meter cubed/meter^3}", 2);
   check("{1 meter^2/meter squared}", 1);
   check("{1 meter squared/meter^2}", 1);
-  check("{1 cat}={1 dog}", 0);
-  check("{1 cat}!={1 dog}", 1);
-  failure("{1 cat}<{1 dog}");
-  failure("{1 cat}<={1 dog}");
-  failure("{1 cat}>{1 dog}");
-  failure("{1 cat}>={1 dog}");
+  failure("{1 cat}={1 dog}", "Incompatible units");
+  failure("{1 cat}!={1 dog}", "Incompatible units");
+  failure("{1 cat}<{1 dog}", "Incompatible units");
+  failure("{1 cat}<={1 dog}", "Incompatible units");
+  failure("{1 cat}>{1 dog}", "Incompatible units");
+  failure("{1 cat}>={1 dog}", "Incompatible units");
   check("{2 1/pig/pig}=={2 1/(pig*pig)}", 1);
   check("{2 1/pig/pig}=={2 1/(pig squared)}", 1);
   check("{2 cows/pigs*(pigs/(cows*birds))}=={2 1/(birds)}", 1);

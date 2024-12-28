@@ -5,7 +5,7 @@ import { nodeBase } from "../Constants.js";
 import { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder } from "./Blocks.js";
 import { Results } from "./Results.js";
 import { SimulationError } from "./SimulationError.js";
-
+export { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder };
 
 
 /**
@@ -154,6 +154,78 @@ export class Model {
     return edge;
   }
 
+
+  /**
+   * Async simulation mode. Allows for pausing the simulation and adjusting
+   * values. Returns a promise that resolves with the results or rejects
+   * with an error.
+   * 
+   * To enable pausing, set the `timePause` property on the model.
+   * 
+   * @param {object} options
+   * @param {function({ results: Results, time: number, setValue: function(Primitive, any) })=} options.onPause - async function that will be awaited prior to simulation resuming, use setValue() to adjust values.
+   * 
+   * @returns {Promise<Results, { error: string, errorCode: number, errorPrimitive: Primitive}|Error>}
+   */
+  async simulateAsync(options={}) {
+    return new Promise((resolve, reject) => {
+      /** @type {import("../Modeler.js").SimulationConfigType} */
+      let config = {
+        silent: true,
+        model: this
+      };
+
+      if (options.onPause) {
+        config.onPause = async (results) => {
+          let items = this.find();
+          /** @type {Object<string, string>} */
+          let nameIdMapping = {};
+          for (let item of items) {
+            nameIdMapping[item.id] = item.name;
+          }
+
+          try {
+            await options.onPause({
+              results: new Results(results, nameIdMapping),
+              time: results.times.at(-1),
+              setValue: (primitive, value) => {
+                results.setValue(primitive._node, value);
+              }
+            });
+          } catch (e) {
+            reject(e);
+            return;
+          }
+
+          results.resume();
+        };
+      }
+
+      config.onSuccess = (results) => {
+        let items = this.find();
+        /** @type {Object<string, string>} */
+        let nameIdMapping = {};
+        for (let item of items) {
+          nameIdMapping[item.id] = item.name;
+        }
+
+        resolve(new Results(results, nameIdMapping));
+      };
+
+      config.onError = (results) => {
+        reject({
+          error: results.error,
+          errorCode: results.errorCode,
+          errorPrimitive: results.errorPrimitive ? this.get(p => p.id === results.errorPrimitive.id) : null
+        });
+      };
+
+
+      runSimulation(config);
+    });
+  }
+
+
   simulate() {
     let config = {
       silent: true,
@@ -168,6 +240,8 @@ export class Model {
       if (results.errorPrimitive) {
         config.primitive = this.get(p => p.id === results.errorPrimitive.id);
       }
+      config.line = results.errorLine;
+      config.source = results.errorSource;
 
       throw new SimulationError(results.error, config);
     }

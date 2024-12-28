@@ -4,7 +4,7 @@ import { SAgent, SPopulation, STransition, SAction, SState, SStock, SVariable, S
 // eslint-disable-next-line
 import { Action, Agent, Converter, Flow, Population, Primitive, State, Stock, Transition, ValuedPrimitive, Variable } from "./api/Blocks.js";
 import { Material } from "./formula/Material.js";
-import { div, plus, mult, evaluateTree, trimTree, trueValue, eq, createTree, bootCalc, TreeNode } from "./formula/Formula.js";
+import { div, plus, mult, evaluateTree, trimTree, trueValue, eq, createTree, bootCalc, TreeNode, PARENT_SYMBOL } from "./formula/Formula.js";
 import { fn } from "./CalcMap.js";
 import { convertUnits } from "./formula/Units.js";
 import { Rand } from "./formula/Rand.js";
@@ -19,19 +19,19 @@ import { Model } from "./api/Model.js";
 
 
 /**
- * @typedef {SPopulation & { node?: import("./api/Blocks").Primitive }} SubModelType=
+ * @typedef {SPopulation & { node?: import("./api/Blocks").Primitive }} SubModelType
  */
 
 
 /**
  * @typedef {object} ModelType
- * @property {Object<string, import("./Simulator").SolverType>=} model.solvers
- * @property {Object<string, SubModelType>=} model.submodels
- * @property {Material=} model.timeLength
- * @property {Material=} model.timeStart
- * @property {Material=} model.timeStep
- * @property {Material=} model.timePause
- * @property {import("./formula/Units.js").UnitStore} model.timeUnits
+ * @property {Object<string, import("./Simulator").SolverType>=} solvers
+ * @property {Object<string, SubModelType>=} submodels
+ * @property {Material=} timeLength
+ * @property {Material=} timeStart
+ * @property {Material=} timeStep
+ * @property {Material=} timePause
+ * @property {import("./formula/Units.js").UnitStore} timeUnits
  */
 
 
@@ -76,7 +76,6 @@ export function runSimulation(config) {
 
 
 /**
- *
  * @param {*} err
  * @param {*} config
  * @param {import("./Simulator").Simulator} simulate
@@ -122,11 +121,34 @@ export function checkErr(err, config, simulate) {
     errOut.error = errOut.error.replace(/<br\s*\/?>/g, "\n").replace(/<[^>]*>?/gm, "");
   }
 
+  if (simulate.evaluatingPosition) {
+    if (simulate.evaluatingPosition.source === "macros") {
+      errOut.errorPrimitive = null;
+      errOut.errorSource = "GLOBALS";
+      errOut.errorLine = simulate.evaluatingPosition.line;
+    } else {
+      if (errOut.errorPrimitive) {
+        errOut.errorSource = "PRIMITIVE";
+        if (simulate.evaluatingPosition.source?.startsWith("p:" + errOut.errorPrimitive.id + ":")) {
+          errOut.errorLine = simulate.evaluatingPosition.line;
+          let part = simulate.evaluatingPosition.source.split(":")[2];
+          if (part) {
+            errOut.errorSource += ":" + part.toUpperCase();
+          }
+        }
+      }
+    }
+  }
+
   if (config.onError) {
     config.onError(errOut);
   }
 
   if (config.handleErrorObject) {
+    err.primitive = errOut.errorPrimitive ? err.primitive : null;
+    err.line = errOut.errorLine;
+    err.source = errOut.errorSource;
+
     config.handleErrorObject(err, simulate);
   } else {
     return errOut;
@@ -427,8 +449,12 @@ function innerRunSimulation(simulate, config) {
         x.agentBase = agentBase.agentParent;
         if (x.agentBase && x.agentBase.trim()) {
           try {
-            x.agentBase = simpleEquation(x.agentBase, simulate, simulate.varBank);
-          } catch (_err) {
+            let nodeBase = new Map();
+            let tree = trimTree(createTree(x.agentBase, "p:" + agentBase.id + ":agentBase", simulate), nodeBase, simulate);
+
+            x.agentBase = simpleEquation(x.agentBase, simulate, simulate.varBank, null, tree);
+          } catch (err) {
+            console.warn(err);
             throw new ModelError(`Invalid Agent Parent for the primitive <i>[${toHTML(agentBase.name)}]</i>.`, {
               primitive: agentBase,
               showEditor: false,
@@ -1128,7 +1154,7 @@ function getDNA(node, submodel, solvers, simulate) {
     }
   }
 
-  if (node instanceof Variable || node instanceof Flow) {
+  if (node instanceof Variable || node instanceof Flow || node instanceof Transition) {
     if (node.external) {
       dna.slider = true;
     }
@@ -1336,11 +1362,9 @@ function getDNA(node, submodel, solvers, simulate) {
 
   }
 
-  if (dna.units && !dna.units.isUnitless()) {
+  if (dna.units) {
     dna.units.addBase();
     dna.toBase = dna.units.toBase;
-  } else {
-    dna.toBase = 1;
   }
 
   dna.unitless = !dna.units;
@@ -1642,7 +1666,7 @@ function buildNetwork(submodel, simulate) {
       for (let j = i + 1; j < submodel.agents.length; j++) {
         // @ts-ignore
         if (trueValue(simpleEquation(submodel.networkFunction, simulate, new Map([
-          ["-parent", simulate.varBank],
+          [PARENT_SYMBOL, simulate.varBank],
           ["a", submodel.agents[i]],
           ["b", submodel.agents[j]]
         ]), neighbors, tree))) {
@@ -1656,7 +1680,7 @@ function buildNetwork(submodel, simulate) {
     throw new ModelError(`Unknown network type: ${toHTML(submodel.network)}.`, {
       primitive: submodel.node,
       showEditor: false,
-      code: 1020
+      code: 1024
     });
   }
 }
@@ -1685,7 +1709,7 @@ function buildPlacements(submodel, simulate) {
       n.set("self", s);
       // @ts-ignore
       s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation(submodel.placementFunction, simulate, new Map([
-        ["-parent", simulate.varBank],
+        [PARENT_SYMBOL, simulate.varBank],
         ["self", s]
       ]), n)), submodel.geoDimUnitsObject, simulate, null, null, "Agent placement functions must return a two element vector");
 
@@ -1701,7 +1725,7 @@ function buildPlacements(submodel, simulate) {
     let size = submodel.agents.length;
     // @ts-ignore
     let ratio = /** @type {number} */ (simpleNum(simpleEquation("width(self)/height(self)", simulate, new Map([
-      ["-parent", simulate.varBank],
+      [PARENT_SYMBOL, simulate.varBank],
       ["self", submodel]
     ]), new Map()), submodel.geoDimUnitsObject, simulate));
 
@@ -1722,7 +1746,7 @@ function buildPlacements(submodel, simulate) {
         ["self", s],
         ["x", new Material(xPos)],
         ["y", new Material(yPos)],
-        ["-parent", simulate.varBank]
+        [PARENT_SYMBOL, simulate.varBank]
       ]), new Map(), tree)), submodel.geoDimUnitsObject, simulate);
       j++;
     });
@@ -1734,7 +1758,7 @@ function buildPlacements(submodel, simulate) {
       s.location = simpleUnitsTest(/** @type {Vector} */(simpleEquation("{width(self), height(self)}/2+{sin(index(self)/size*2*3.14159), cos(index(self)/size*2*3.14159)}*{width(self), heigh(self)}/2", simulate, new Map([
         ["self", s],
         ["size", size],
-        ["-parent", simulate.varBank]
+        [PARENT_SYMBOL, simulate.varBank]
       ]), new Map(), tree)), submodel.geoDimUnitsObject, simulate);
     });
   } else if (submodel.placement === "Network") {
@@ -1791,7 +1815,7 @@ function buildPlacements(submodel, simulate) {
         ["self", submodel],
         ["x", new Material(p.x)],
         ["y", new Material(p.y)],
-        ["-parent", simulate.varBank]
+        [PARENT_SYMBOL, simulate.varBank]
       ]), new Map(), tree), submodel.geoDimUnitsObject, simulate);
     });
 
@@ -2085,7 +2109,7 @@ function makeClusters(simulate) {
       // circular - so order by id.
       // TODO: explore if there is something better we can do in this
       // case
-      let items = [...cluster.flowSet.entries()].map(x => x[0]);
+      let items = [...cluster.flowSet.values()];
       items.sort((a, b) => a.id - b.id);
       let flowCount = 0;
       for (let flow of items) {

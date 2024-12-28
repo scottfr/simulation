@@ -105,7 +105,7 @@ export class UnitStore {
    * @returns 
    */
   isDeepUnitless() {
-    if (!this.exponents.find(x => x !== 0)) {
+    if (this.isUnitless()) {
       return true;
     }
   
@@ -412,6 +412,10 @@ export function convertUnits(source, target, allowUnitApplication = false) {
   }
 
   if (!sourceUnitless && targetUnitless) {
+    if (source.isDeepUnitless()) {
+      return source.toBase;
+    }
+
     return 0;
   }
 
@@ -420,6 +424,12 @@ export function convertUnits(source, target, allowUnitApplication = false) {
       // we apply the target units onto the unitless source
       return 1;
     }
+
+    if (target.isDeepUnitless()) {
+      return fn["/"](1, target.toBase);
+    }
+
+
     return 0;
   }
 

@@ -26,7 +26,7 @@ test("find()", () => {
 });
 
 
-test("simulation equality", () => {
+test("Simulation equality", () => {
   let m = new Model();
 
   let s = m.Stock({
@@ -69,4 +69,41 @@ test("Simulation equality - vectors", () => {
 
   expect(areResultsDifferent(res1._data, res2._data)).toBe(false);
   expect(areResultsDifferent(res1._data, res3._data)).toBeTruthy();
+});
+
+
+it("ConverterTable", () => {
+  let m = new Model();
+
+  let c = m.Converter({
+    name: "Conv",
+    values: [{x: 1, y: 2}, {x: 2, y: 3}, {x: 3, y: 9}]
+  });
+
+  let v = m.Variable({
+    name: "v",
+    value: "ConverterTable([Conv])"
+  });
+
+  m.Link(c, v);
+
+  let res = m.simulate();
+
+  expect(res.value(v)).toEqual([{x: 1, y: 2}, {x: 2, y: 3}, {x: 3, y: 9}]);
+
+
+  v.value = "ConverterTable(1)";
+
+  expect(() => m.simulate()).toThrow("requires a primitive for the parameter");
+
+  let v2 = m.Variable({
+    name: "v2",
+    value: "1"
+  });
+
+  m.Link(v2, v);
+
+  v.value = "ConverterTable([v2])";
+
+  expect(() => m.simulate()).toThrow("requires a Converter primitive as its parameter");
 });

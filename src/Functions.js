@@ -4,9 +4,9 @@ import { Material } from "./formula/Material.js";
 import { ModelError } from "./formula/ModelError.js";
 import { convertUnits } from "./formula/Units.js";
 import { Vector } from "./formula/Vector.js";
-import { AggregateSeries } from "./PrimitivePastValues.js";
+import { AggregateSeries } from "./AggregateSeries.js";
 import { createUnitStore } from "./Modeler.js";
-import { SAction, SAgent, SPopulation, SPrimitive, SState, SStock, STransition, SVariable } from "./Primitives.js";
+import { SAction, SAgent, SConverter, SPopulation, SPrimitive, SState, SStock, STransition, SVariable } from "./Primitives.js";
 import { fn } from "./CalcMap.js";
 import { Task } from "./TaskScheduler.js";
 import { State } from "./api/Blocks.js";
@@ -143,7 +143,7 @@ export function createFunctions(simulate) {
       }
     }
     let position = minus(/** @type {Material} */(simulate.varBank.get("time")([])), peak);
-    let dist = position.forceUnits(createUnitStore("years", simulate)).value * 2 * 3.14159265359;
+    let dist = position.forceUnits(createUnitStore("years", simulate)).value * 2 * Math.PI;
     return new Material(Math.cos(dist));
   });
 
@@ -204,7 +204,7 @@ export function createFunctions(simulate) {
   defineFunction(simulate, "PastCorrelation", { params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "[Primitive]", noVector: true, needPrimitive: true, object: [simulate.varBank, PrimitiveObject] }, { name: "Past Range", vectorize: true, defaultVal: "All Time" }] }, (x) => {
     let items1;
     let items2;
-    if (x[2] !== "All Time") {
+    if (x.length === 2) {
       items1 = x[0].getPastValues();
       items2 = x[1].getPastValues();
     } else {
@@ -331,6 +331,40 @@ export function createFunctions(simulate) {
     });
   simulate.varBank.set("staircase", simulate.varBank.get("step"));
 
+
+  defineFunction(simulate, "ConverterTable", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Converter]", noVector: true, needPrimitive: true }] },
+    /**
+     * @param {[SPrimitive]} x
+     *
+     * @returns {Vector}
+     */
+    (x) => {
+      if (!(x[0] instanceof SConverter)) {
+        throw new ModelError("ConverterTable() requires a Converter primitive as its parameter.", {
+          code: 1045
+        });
+      }
+
+      let input = x[0].dna.inputs;
+      let outputs = x[0].dna.outputs;
+
+      let items = [];
+
+      let clean = function(x) {
+        if (x instanceof Material) {
+          return new Material(x.value);
+        }
+        return new Material(x);
+      };
+      
+      for (let i = 0; i < input.length; i++) {
+        items.push(new Vector([clean(input[i].value), clean(outputs[i])], simulate, ["x", "y"]));
+      }
+
+      return new Vector(items, simulate);
+    });
+
+
   defineFunction(simulate, "Delay", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Delay", vectorize: true }, { name: "Initial Value", defaultVal: "None" }] },
     /**
      * @param {[SPrimitive, Material, ValueType?]} x
@@ -402,25 +436,26 @@ export function createFunctions(simulate) {
 
 
 
-  simulate.varBank.set("fix", function (x, id,) {
+  simulate.varBank.set("fix", function (x, id) {
     testArgumentsSize(x, "Fix", 1, 2);
-    /** @type {number|Material} */
-    let spacing = -1;
+
+    /** @type {Material} */
+    let spacing = null;
     if (x.length === 2) {
       spacing = toNum(evaluateNode(x[1].node, x[1].scope, simulate));
-    }
 
-    let mySeries = null;
-    for (let i = 0; i < simulate.oldAggregateSeries.length; i++) {
-      if (simulate.oldAggregateSeries[i].match(id)) {
-        mySeries = simulate.oldAggregateSeries[i];
-        break;
+      if (!(spacing instanceof Material)) {
+        throw new ModelError("fix() requires a number for the parameter 'spacing'.", {
+          code: 6058
+        });
       }
     }
 
-    if (mySeries === null) {
-      mySeries = new AggregateSeries(simulate, id, spacing);
-      simulate.oldAggregateSeries.push(mySeries);
+    let mySeries = simulate.aggregateSeries.get(id);
+
+    if (!mySeries) {
+      mySeries = new AggregateSeries(simulate, spacing);
+      simulate.aggregateSeries.set(id, mySeries);
     }
 
     return mySeries.get(x[0]);

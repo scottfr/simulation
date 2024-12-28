@@ -1,7 +1,7 @@
 export class SimulationError extends Error {
   /**
    * @param {string} message
-   * @param {{ primitive?: any, code: number }} config
+   * @param {{ source?: string, primitive?: any, line?: number, code: number }} config
    */
   constructor(message, config) {
     super(message);
@@ -12,7 +12,10 @@ export class SimulationError extends Error {
 
     this.name = "SimulationError";
 
+
+    this.source = config.source;
     this.primitive = config.primitive;
+    this.line = config.line;
     this.code = config.code;
 
     // Don't print these on the console

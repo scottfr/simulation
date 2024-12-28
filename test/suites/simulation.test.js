@@ -283,11 +283,53 @@ describe.each([
         name: "My Variable"
       });
 
-      p.value = "Fix(years+12)";
+
+      p.value = "Fix(years, -1)";
       let res = m.simulate();
+      expect(res.series(p)[2]).toBe(0);
+      expect(res.series(p)[5]).toBe(0);
+      expect(res.series(p)[15]).toBe(0);
+
+      p.value = "Fix(years, true)";
+      expect(() => m.simulate()).toThrow(/requires a number/);
+
+
+      p.value = "Fix(years, \"abc\")";
+      expect(() => m.simulate()).toThrow(/requires a number/);
+
+
+      p.value = "Fix(years, -10)";
+      res = m.simulate();
+      expect(res.series(p)[2]).toBe(0);
+      expect(res.series(p)[5]).toBe(0);
+      expect(res.series(p)[15]).toBe(0);
+
+      p.value = "Fix(years)";
+      res = m.simulate();
+      expect(res.series(p)[2]).toBe(0);
+      expect(res.series(p)[5]).toBe(0);
+      expect(res.series(p)[15]).toBe(0);
+
+
+      p.value = "Fix(years+12)";
+      res = m.simulate();
       expect(res.series(p)[2]).toBe(12);
       expect(res.series(p)[5]).toBe(12);
       expect(res.series(p)[15]).toBe(12);
+
+
+      p.value = "Fix(years, 0)";
+      res = m.simulate();
+      expect(res.series(p)[2]).toBe(2);
+      expect(res.series(p)[5]).toBe(5);
+      expect(res.series(p)[15]).toBe(15);
+
+
+      p.value = "fix(years + 1, 0)";
+      res = m.simulate();
+      expect(res.series(p)[2]).toBe(3);
+      expect(res.series(p)[5]).toBe(6);
+      expect(res.series(p)[15]).toBe(16);
 
       p.value = "Fix(years+12, 5)";
       res = m.simulate();
@@ -1462,6 +1504,61 @@ describe.each([
 
 
       expect(() => m.simulate()).toThrow(/does not have a source/);
+    });
+
+
+    test("Converter with vector inputs", () => {
+      let m = new Model({ algorithm });
+
+      let c = m.Converter({
+        name: "my converter"
+      });
+
+
+      c.values = [{x: 0, y: 0}, {x: 50, y: 100}, {x: 100, y: 1000}, {x: 150, y: 1100}];
+
+
+      let p = m.Variable({
+        name: "Input"
+      });
+      m.Link(p, c);
+      p.value = "{a: years, b: years+100}";
+      c.input = p;
+
+      let res = m.simulate();
+
+      expect(res.series(c)[0].a).toBe(0);
+      expect(res.series(c)[0].b).toBe(1000);
+
+      expect(res.series(c)[10].a).toBe(20);
+      expect(res.series(c)[10].b).toBe(1020);
+
+
+      p.value = "{years, years+100}";
+
+      res = m.simulate();
+      
+      expect(res.series(c)[0][0]).toBe(0);
+      expect(res.series(c)[0][1]).toBe(1000);
+
+      expect(res.series(c)[10][0]).toBe(20);
+      expect(res.series(c)[10][1]).toBe(1020);
+
+
+      p.value = "{a: {x: years, y: years+100 }}";
+
+      res = m.simulate();
+      
+      expect(res.series(c)[0].a.x).toBe(0);
+      expect(res.series(c)[0].a.y).toBe(1000);
+
+      expect(res.series(c)[10].a.x).toBe(20);
+      expect(res.series(c)[10].a.y).toBe(1020);
+
+
+      p.value = "{a: {x: years, y: years+100, z: \"foo\" }}";
+
+      expect(() => m.simulate()).toThrow(/Cannot use Strings in/);
     });
 
 
@@ -2938,6 +3035,8 @@ describe.each([
       res = m.simulate();
       expect(Math.round(res.series(p2)[6] * 10000)).toBe(Math.round((6 + 5 + 4 + 3) / 4 * 10000));
 
+
+      // perfectly correlated
       p2.value = "PastCorrelation([x], [x])";
       res = m.simulate();
       expect(Math.round(res.series(p2)[6] * 10000)).toBe(10000);
@@ -2945,7 +3044,40 @@ describe.each([
       p2.value = "PastCorrelation([x], [x], {3 Years})";
       res = m.simulate();
       expect(Math.round(res.series(p2)[6] * 10000)).toBe(10000);
+
+
+      m.Link(p, p3);
+      p3.value = "-[x]";
+
+      // negatively correlated
+      p2.value = "PastCorrelation([x], [z])";
+      res = m.simulate();
+      expect(Math.round(res.series(p2)[6] * 10000)).toBe(-10000);
+
+
+      p2.value = "PastCorrelation([x], [z], {3 Years})";
+      res = m.simulate();
+      expect(Math.round(res.series(p2)[6] * 10000)).toBe(-10000);
+
+
+      // changing correlation over time
+
+      m.Link(p, p3);
+      p3.value = "IfThenElse([x] <= 6, [x], -[x]) ";
+
+      p2.value = "PastCorrelation([x], [z])";
+      res = m.simulate();
+      let corrAll = res.series(p2)[10];
+
+
+      p2.value = "PastCorrelation([x], [z], {3 Years})";
+      res = m.simulate();
+      let corr3 = res.series(p2)[10];
+
+      expect(corrAll).toBeGreaterThan(corr3);
     });
+
+    
 
 
     test("Delay with unnamed vector", () => {

@@ -835,9 +835,14 @@ describe.each([
       expect(res.series(v)[2]).toBe(11);
       expect(res.series(v2)[9]).toBe(21);
 
+      f.agentParent = "x <- new AgentBase\n x.doMove <- function() self.bar({10, 20})\n x";
+      mover.action = "Self.doMove()";
+
+      expect(() => m.simulate()).toThrow();
+
+
       f.agentParent = "x <- new AgentBase\n x.doMove <- function() self.move({10, 20})\n x";
 
-      mover.action = "Self.doMove()";
       res = m.simulate();
       expect(res.series(v)[2]).toBe(10 + 2 * 10);
       expect(res.series(v2)[9]).toBe(40 + 9 * 20);

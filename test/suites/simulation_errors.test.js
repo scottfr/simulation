@@ -363,10 +363,133 @@ test("Smooth errors attributed correctly", () => {
     smooth(max("abc"), 10)
     c<-3`
   });
+
   try {
     m.simulate();
   } catch (err) {
     expect(err.primitive).toBe(v);
+    expect(err.line).toBe(3);
+  }
+
+  v.value = `a<-1
+    b<-2
+
+    smooth(max("abc"), 10)
+    c<-3`;
+  try {
+    m.simulate();
+    // should never happen
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.primitive).toBe(v);
+    expect(err.source).toBe("PRIMITIVE:VALUE");
+    expect(err.line).toBe(4);
+
+
+    expect(err.message).toContain("This value may only be numbers or vectors, found a string");
+  }
+});
+
+
+test("Macro errors attributed correctly", () => {
+  let m = new Model();
+  m.globals = `function foo()
+    xxx()
+  end function
+  `;
+  m.Variable({
+    value: "foo()"
+  });
+
+  try {
+    m.simulate();
+    // should never happen
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.primitive).toBe(undefined);
+
+    expect(err.source).toBe("GLOBALS");
+
+    // undefined as the error is in the macro
+    expect(err.line).toBe(2);
+
+    expect(err.message).toContain("The variable or function \"xxx\" does not exist");
+  }
+});
+
+
+it("Invalid flow vectors", () => {
+  let m = new Model();
+  m.Variable({
+    name: "v1",
+    value: "1"
+  });
+
+  let s = m.Stock({
+    name: "Stock",
+    initial: "{1,2}"
+  });
+  let f = m.Flow(s, null, {
+    name: "Flow",
+    rate: "{1, 2, 3}"
+  });
+
+  m.Variable({
+    name: "v2",
+    value: "2"
+  });
+
+  
+  try {
+    m.simulate();
+    // should never happen
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.primitive).toBe(f);
+
+    expect(err.source).toBe("PRIMITIVE");
+
+    expect(err.line).toBe(undefined);
+
+    expect(err.message).toContain("Incompatible vector keys");
+  }
+});
+
+
+it("Invalid converter source", () => {
+  let m = new Model();
+  let v = m.Variable({
+    name: "v1",
+    value: "\"abc\""
+  });
+
+  let c = m.Converter({
+    name: "Converter",
+    values: [{ x: 1, y: 1 }],
+    input: v
+  });
+
+  m.Link(v, c);
+
+
+
+  m.Variable({
+    name: "v2",
+    value: "2"
+  });
+
+  try {
+    m.simulate();
+    // should never happen
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.primitive).toBe(c);
+
+    expect(err.source).toBe("PRIMITIVE");
+
+    expect(err.line).toBe(undefined);
+
+    expect(err.message).toBe("Converter inputs must be numbers or vectors.");
   }
 });
 
@@ -477,4 +600,48 @@ test("Ambiguous primitive names", () => {
 
   m.Link(x2, y);
   expect(() => m.simulate()).toThrow(/\[x\] is ambiguous/);
+});
+
+
+test("Units mismatch", () => {
+  let m = new Model();
+  let x = m.Variable({
+    name: "x",
+    value: "1"
+  });
+  let y = m.Variable({
+    name: "y",
+    value: "1"
+  });
+
+  m.Link(x, y);
+
+  // sugestion is shown when it's a matieral
+
+  y.value = "1 + {1 meter}";
+  expect(() => m.simulate()).toThrow("Consider replacing 1 with {1 meter}");
+
+  y.value = "{1 meter} + 2";
+  expect(() => m.simulate()).toThrow("Consider replacing 2 with {2 meter}");
+
+
+  // suggestion is shown when it's a primitive
+
+  y.value = "[x] + {1 meter}";
+  expect(() => m.simulate()).toThrow("Consider setting the units of [x] to meter.");
+
+  y.value = "{1 meter} + [x]";
+  expect(() => m.simulate()).toThrow("Consider setting the units of [x] to meter.");
+
+  
+  // suggestion is not shown when it is a function
+
+  y.value = "seconds() + {1 meter}";
+  try {
+    m.simulate();
+    // should never reach this point
+    expect(true).toBe(false);
+  } catch (err) {
+    expect(err.message).not.toContain("Consider");
+  }
 });

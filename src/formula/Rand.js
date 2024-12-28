@@ -628,7 +628,7 @@ function isNormalNumber(x, name, v) {
   if (x > 1e+15) {
     // randBinomial fails at a count of around 1e26. Let's add a reasonable maximum to all these
     // functions
-    throw new ModelError(`The <i>${v}</i> passed to ${name}() must not be not be greater than 1e15 (got ${x}).`, {
+    throw new ModelError(`The <i>${v}</i> passed to ${name}() must not be greater than 1e15 (got ${x}).`, {
       code: 4020
     });
   }

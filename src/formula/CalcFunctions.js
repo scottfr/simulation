@@ -1,7 +1,7 @@
 import { agent, agents, getPopulation } from "../Functions.js";
 import { SPrimitive, SAgent, SPopulation } from "../Primitives.js";
 import { fn } from "../CalcMap.js";
-import { div, eq, evaluateNode, greaterThan, lessThan, minus, mult, plus, power, StringObject, toNum, trueValue, UserFunction, VectorObject } from "./Formula.js";
+import { div, eq, evaluateNode, greaterThan, lessThan, minus, mult, PARENT_SYMBOL, plus, power, StringObject, toNum, trueValue, UserFunction, VectorObject } from "./Formula.js";
 import { Rand, RandBeta, RandBinomial, RandDist, RandExp, RandGamma, RandLognormal, RandNegativeBinomial, RandNormal, RandPoisson, RandTriangular } from "./Rand.js";
 import { Material } from "./Material.js";
 import { stringify, strictEquals } from "./Utilities.js";
@@ -62,7 +62,7 @@ export function createFunctions(simulate) {
     } else if (x.length === 2) {
       return new Material(Rand(simulate, toNum(x[0]).value, toNum(x[1]).value));
     } else {
-      throw new ModelError("Rand() must either have no parameters or a two: Min and Max bounds.", {
+      throw new ModelError("Rand() must either have no parameters or two: Min and Max bounds.", {
         code: 6001
       });
     }
@@ -73,7 +73,7 @@ export function createFunctions(simulate) {
     } else if (x.length === 2) {
       return new Material(RandNormal(simulate, toNum(x[0]).value, toNum(x[1]).value));
     } else {
-      throw new ModelError("RandNormal() must either have no parameters or a two: Mean and Standard Deviation.", {
+      throw new ModelError("RandNormal() must either have no parameters or two: Mean and Standard Deviation.", {
         code: 6002
       });
     }
@@ -104,13 +104,8 @@ export function createFunctions(simulate) {
     return new Material(RandTriangular(simulate, toNum(x[0]).value, toNum(x[1]).value, toNum(x[2]).value));
   });
 
-  defineFunction(simulate, "Magnitude", { params: [{ name: "Number" }] }, (x) => {
-    if (toNum(x[0]) instanceof Vector) {
-      return simulate.varBank.get("sqrt")([simulate.varBank.get("sum")([mult(x[0], x[0])])]);
-    }
-    let r = toNum(x[0]);
-    r.value = fn.magnitude(r.value);
-    return r;
+  defineFunction(simulate, "Magnitude", { params: [{ name: "Vector", needVector: true }] }, (x) => {
+    return simulate.varBank.get("sqrt")([simulate.varBank.get("sum")([mult(x[0], x[0])])]);
   });
 
 
@@ -163,20 +158,49 @@ export function createFunctions(simulate) {
     }
   });
   defineFunction(simulate, "asin", { params: [{ name: "Number", noUnits: true }], recurse: true, leafNeedNum: true }, (x) => {
-    return new Material(fn.asin(toNum(x[0]).value));
+
+    let val = toNum(x[0]).value;
+    if (val < -1 || val > 1) {
+      throw new ModelError("asin() input must be between -1 and 1.", {
+        code: 6077
+      });
+    }
+
+    return new Material(fn.asin(val));
   });
   defineFunction(simulate, "acos", { params: [{ name: "Number", noUnits: true }], recurse: true, leafNeedNum: true }, (x) => {
-    return new Material(fn.acos(toNum(x[0]).value));
+    let val = toNum(x[0]).value;
+    if (val < -1 || val > 1) {
+      throw new ModelError("acos() input must be between -1 and 1.", {
+        code: 6078
+      });
+    }
+
+    return new Material(fn.acos(val));
   });
   defineFunction(simulate, "atan", { params: [{ name: "Number", noUnits: true }], recurse: true, leafNeedNum: true }, (x) => {
     return new Material(fn.atan(toNum(x[0]).value));
   });
 
   defineFunction(simulate, "arcsin", { params: [{ name: "Number", noUnits: true }], recurse: true, leafNeedNum: true }, (x) => {
-    return new Material(fn.asin(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]), false);
+    let val = toNum(x[0]).value;
+    if (val < -1 || val > 1) {
+      throw new ModelError("arcsin() input must be between -1 and 1.", {
+        code: 6077
+      });
+    }
+
+    return new Material(fn.asin(val), simulate.unitManager.getUnitStore(["radians"], [1]), false);
   });
   defineFunction(simulate, "arccos", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
-    return new Material(fn.acos(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]), false);
+    let val = toNum(x[0]).value;
+    if (val < -1 || val > 1) {
+      throw new ModelError("arccos() input must be between -1 and 1.", {
+        code: 6078
+      });
+    }
+
+    return new Material(fn.acos(val), simulate.unitManager.getUnitStore(["radians"], [1]), false);
   });
   defineFunction(simulate, "arctan", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     return new Material(fn.atan(toNum(x[0]).value), simulate.unitManager.getUnitStore(["radians"], [1]), false);
@@ -211,7 +235,7 @@ export function createFunctions(simulate) {
   defineFunction(simulate, "Ln", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     let val = toNum(x[0]).value;
     if (val < 0) {
-      throw new ModelError("Ln() requires a number greater than or equal to 0.", {
+      throw new ModelError("Ln() requires a number greater than or equal to 0. Got, <i>" + val + "</i>.", {
         code: 6008
       });
     }
@@ -220,7 +244,7 @@ export function createFunctions(simulate) {
   defineFunction(simulate, "Log", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     let val = toNum(x[0]).value;
     if (val < 0) {
-      throw new ModelError("Log() requires a number greater than or equal to 0.", {
+      throw new ModelError("Log() requires a number greater than or equal to 0. Got, <i>" + val + "</i>.", {
         code: 6009
       });
     }
@@ -228,6 +252,13 @@ export function createFunctions(simulate) {
   });
   defineFunction(simulate, "Logit", { params: [{ name: "Number", noUnits: true, leafNeedNum: true }], recurse: true }, (x) => {
     let r = toNum(x[0]);
+    ;
+    if (r.value < 0 || r.value > 1) {
+      throw new ModelError("Logit() requires an input between 0 and 1 (inclusive).", {
+        code: 6079
+      });
+    }
+  
     r.value = fn["-"](fn.log(r.value), fn.log(fn["-"](1, r.value)));
     return r;
   });
@@ -401,10 +432,12 @@ export function createFunctions(simulate) {
     v = v.fullClone();
 
     let fn;
-    let scope = new Map([
-      ["x", null], 
-      ["-parent", x[1].scope]
-    ]);
+    /** @type {Array} */
+    let items = [
+      [PARENT_SYMBOL, x[1].scope],
+      ["x", null],
+    ];
+    let scope = new Map(items);
     let node = x[1].node;
     try {
       fn = evaluateNode(node, scope, simulate);
@@ -599,6 +632,12 @@ export function createFunctions(simulate) {
           code: 6073
         });
       }
+
+      if (items.value < 0) {
+        throw new ModelError(`Repeat count must be a non-negative. Got, <i>${items.value}</i>.`, {
+          code: 6075
+        });
+      }
     } else {
       throw new ModelError(`Repeat count must be a Number or Vector. Got, <i>${items}</i>.`, {
         code: 6074
@@ -606,11 +645,14 @@ export function createFunctions(simulate) {
     }
 
     let res = [];
-    let scope = new Map([
+
+    /** @type {Array} */
+    let scopeItems = [
       ["x", null],
-      ["-parent", x[1].scope],
+      [PARENT_SYMBOL, x[1].scope],
       ["key", null]
-    ]);
+    ];
+    let scope = new Map(scopeItems);
     for (let i = 0; i < count; i++) {
       if (items instanceof Vector) {
         scope.set("key", items.items[i]);
@@ -1148,6 +1190,10 @@ export function createFunctions(simulate) {
     return simulate.varBank.get("flatten")(x);
   });
 
+  /**
+   * @param {Vector} x 
+   * @returns 
+   */
   function flatten(x) {
     let res = [];
     let names = [];
@@ -1180,6 +1226,12 @@ export function createFunctions(simulate) {
     let mu = x[1] ? toNum(x[1]).value : 0;
     let sd = x[2] ? toNum(x[2]).value : 1;
 
+    if (sd < 0) {
+      throw new ModelError("Standard Deviation must not be negative.", {
+        code: 6076
+      });
+    }
+
     return new Material(jStat.normal.cdf(val, mu, sd));
   });
 
@@ -1187,6 +1239,12 @@ export function createFunctions(simulate) {
     let val = toNum(x[0]).value;
     let mu = x[1] ? toNum(x[1]).value : 0;
     let sd = x[2] ? toNum(x[2]).value : 1;
+
+    if (sd < 0) {
+      throw new ModelError("Standard Deviation must not be negative.", {
+        code: 6076
+      });
+    }
 
     return new Material(jStat.normal.pdf(val, mu, sd));
   });
@@ -1201,6 +1259,12 @@ export function createFunctions(simulate) {
     let mu = x[1] ? toNum(x[1]).value : 0;
     let sd = x[2] ? toNum(x[2]).value : 1;
 
+    if (sd < 0) {
+      throw new ModelError("Standard Deviation must not be negative.", {
+        code: 6076
+      });
+    }
+
     return new Material(jStat.normal.inv(val, mu, sd));
   });
 
@@ -1209,6 +1273,12 @@ export function createFunctions(simulate) {
     let mu = x[1] ? toNum(x[1]).value : 0;
     let sd = x[2] ? toNum(x[2]).value : 1;
 
+    if (sd < 0) {
+      throw new ModelError("Standard Deviation must not be negative.", {
+        code: 6076
+      });
+    }
+
     return new Material(jStat.lognormal.cdf(val, mu, sd));
   });
 
@@ -1216,6 +1286,12 @@ export function createFunctions(simulate) {
     let val = toNum(x[0]).value;
     let mu = x[1] ? toNum(x[1]).value : 0;
     let sd = x[2] ? toNum(x[2]).value : 1;
+
+    if (sd < 0) {
+      throw new ModelError("Standard Deviation must not be negative.", {
+        code: 6076
+      });
+    }
 
     return new Material(jStat.lognormal.pdf(val, mu, sd));
   });
@@ -1229,6 +1305,12 @@ export function createFunctions(simulate) {
     }
     let mu = x[1] ? toNum(x[1]).value : 0;
     let sd = x[2] ? toNum(x[2]).value : 1;
+
+    if (sd < 0) {
+      throw new ModelError("Standard Deviation must not be negative.", {
+        code: 6076
+      });
+    }
 
     return new Material(jStat.lognormal.inv(val, mu, sd));
   });
@@ -1399,7 +1481,7 @@ export function createFunctions(simulate) {
     return new Material(jStat.exponential.pdf(val, rate));
   });
 
-  defineFunction(simulate, "InvExponential", { params: [{ name: "p", noUnits: true, noVector: true }, { name: "DRate", noUnits: true, noVector: true }] }, (x) => {
+  defineFunction(simulate, "InvExponential", { params: [{ name: "p", noUnits: true, noVector: true }, { name: "Rate", noUnits: true, noVector: true }] }, (x) => {
     let val = toNum(x[0]).value;
     if (val < 0 || val > 1) {
       throw new ModelError("<i>p</i> is a probability and must be between 0 and 1 inclusive.", {
@@ -1432,7 +1514,7 @@ export function createFunctions(simulate) {
     let val = toNum(x[0]).value;
     let Lambda = toNum(x[1]).value;
     if (Lambda <= 0) {
-      throw new ModelError("<i>Rate</i> must be greater than 0.", {
+      throw new ModelError("<i>Lambda</i> must be greater than 0.", {
         code: 6047
       });
     }
@@ -1447,7 +1529,7 @@ export function createFunctions(simulate) {
 
 
   defineFunction(simulate, "SetRandSeed", { params: [{ name: "Seed Number", noUnits: true, noVector: true }] }, (x) => {
-    simulate.random = new SeedRandom.seedrandom(toNum(x[0]).value);
+    simulate.random = SeedRandom.seedrandom(toNum(x[0]).value);
     return stringify("Random Seed Set", simulate);
   });
 
@@ -1480,25 +1562,27 @@ export function createFunctions(simulate) {
       y = y.value;
     }
 
-    x = prompt(x[0], y);
+    let result = prompt(x[0], y);
 
-    if (parseFloat(x).toString() === x) {
-      return new Material(parseFloat(x));
-    } else if (x === null) {
+    if (parseFloat(result).toString() === result) {
+      return new Material(parseFloat(result));
+    } else if (result === null) {
       return new Material(0);
     } else {
-      return stringify(x, simulate);
+      return stringify(result, simulate);
     }
   });
 
   defineFunction(simulate, "Confirm", { params: [{ name: "Message", allowString: true, allowBoolean: true }] }, (x) => {
-    if (typeof window === "undefined" || (typeof window.confirm === "undefined")) {
+    // eslint-disable-next-line
+    if (typeof confirm === "undefined") {
       throw new ModelError("Confirm() is not implemented on this platform.", {
         code: 6050
       });
     }
 
-    return window.confirm(x[0]);
+    // eslint-disable-next-line
+    return confirm(x[0]);
   });
 
   defineFunction(simulate, "Parse", { object: StringObject, params: [{ name: "String", allowString: true }] }, (x) => {

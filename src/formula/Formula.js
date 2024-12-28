@@ -13,6 +13,8 @@ import FormulaParser from "./grammar/FormulaParser.js";
 import { toHTML } from "../Utilities.js";
 import { DUPLICATE_PRIMITIVE_NAMES } from "../Modeler.js";
 
+export const PARENT_SYMBOL = Symbol("-parent");
+
 
 /**
  * @param {import("../Simulator").Simulator} simulate
@@ -20,9 +22,9 @@ import { DUPLICATE_PRIMITIVE_NAMES } from "../Modeler.js";
 export function bootCalc(simulate) {
   simulate.varBank = new Map();
 
-  simulate.varBank.set("-parent", null);
-  simulate.varBank.set("e", new Material(2.71828182845904523536));
-  simulate.varBank.set("pi", new Material(3.14159265358979323846264338));
+  simulate.varBank.set(PARENT_SYMBOL, null);
+  simulate.varBank.set("e", new Material(Math.E));
+  simulate.varBank.set("pi", new Material(Math.PI));
   simulate.varBank.set("phi", new Material(1.61803399));
   generalCreateFunctions(simulate);
   modelerCreateFunctions(simulate);
@@ -42,7 +44,7 @@ function getInnerBlock(node, parser, source) {
 
 
 
-class PrimitiveStore {
+export class PrimitiveStore {
   /**
    * @param {any} primitive
    * @param {string} type
@@ -52,6 +54,7 @@ class PrimitiveStore {
     this.type = type; // "value", "totalValue", "object"
   }
 }
+
 
 /**
  * @template {any} T
@@ -1408,16 +1411,23 @@ export function fNot(x) {
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["NOTEQUALS"] = function (node, scope, simulate) {
-  return neq(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)));
+  return neq(
+    toNum(evaluateNode(node.children[0], scope, simulate)),
+    toNum(evaluateNode(node.children[1], scope, simulate)),
+    node.children[0],
+    node.children[1]
+  );
 };
 
 /**
  * @param {ValueType|string|number} lhs
  * @param {ValueType|string|number} rhs
+ * @param {TreeNode=} lhsNode
+ * @param {TreeNode=} rhsNode
  *
  * @returns {boolean}
  */
-export function neq(lhs, rhs) {
+export function neq(lhs, rhs, lhsNode, rhsNode) {
   if ((typeof lhs === "boolean" && !(rhs instanceof Vector)) || (typeof rhs === "boolean" && !(lhs instanceof Vector))) {
     return trueValue(lhs) !== trueValue(rhs);
   }
@@ -1440,7 +1450,7 @@ export function neq(lhs, rhs) {
   if (lhs.units !== rhs.units) {
     scale = convertUnits(rhs.units, lhs.units);
     if (scale === 0) {
-      return true;
+      unitAlert(lhs, rhs, "inequality comparison", "<>", lhsNode, rhsNode);
     }
   }
 
@@ -1453,17 +1463,24 @@ export function neq(lhs, rhs) {
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["EQUALS"] = function (node, scope, simulate) {
-  return eq(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)), true);
+  return eq(
+    toNum(evaluateNode(node.children[0], scope, simulate)),
+    toNum(evaluateNode(node.children[1], scope, simulate)),
+    node.children[0],
+    node.children[1],
+    true);
 };
 
 
 /**
  * @param {ValueType|string|number} lhs
  * @param {ValueType|string|number} rhs
+ * @param {TreeNode=} lhsNode
+ * @param {TreeNode=} rhsNode
  * @param {boolean=} allowVectorReturn 
  * @returns {boolean}
  */
-export function eq(lhs, rhs, allowVectorReturn=false) {
+export function eq(lhs, rhs, lhsNode, rhsNode, allowVectorReturn=false) {
   if ((typeof lhs === "boolean" && !(rhs instanceof Vector)) || (typeof rhs === "boolean" && !(lhs instanceof Vector))) {
     return trueValue(lhs) === trueValue(rhs);
   }
@@ -1474,9 +1491,9 @@ export function eq(lhs, rhs, allowVectorReturn=false) {
 
   if (allowVectorReturn) {
     if (lhs instanceof Vector) {
-      return lhs.cloneCombine(rhs, (a, b) => eq(a, b, true), false);
+      return lhs.cloneCombine(rhs, (a, b) => eq(a, b, undefined, undefined, true), false);
     } else if (rhs instanceof Vector) {
-      return rhs.cloneCombine(lhs, (a, b) => eq(a, b, true), true);
+      return rhs.cloneCombine(lhs, (a, b) => eq(a, b, undefined, undefined, true), true);
     }
   } else {
     if (lhs instanceof Vector || rhs instanceof Vector) {
@@ -1495,7 +1512,7 @@ export function eq(lhs, rhs, allowVectorReturn=false) {
   if (lhs.units !== rhs.units) {
     scale = convertUnits(rhs.units, lhs.units);
     if (scale === 0) {
-      return false;
+      unitAlert(lhs, rhs, "equality comparison", "=", lhsNode, rhsNode);
     }
   }
 
@@ -1527,16 +1544,23 @@ function comparisonValid(lhs, rhs) {
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["LT"] = function (node, scope, simulate) {
-  return lessThan(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)));
+  return lessThan(
+    toNum(evaluateNode(node.children[0], scope, simulate)),
+    toNum(evaluateNode(node.children[1], scope, simulate)),
+    node.children[0],
+    node.children[1]
+  );
 };
 
 /**
  * @param {ValueType} lhs
  * @param {ValueType} rhs
+ * @param {TreeNode=} lhsNode
+ * @param {TreeNode=} rhsNode
  *
  * @returns {boolean}
  */
-export function lessThan(lhs, rhs) {
+export function lessThan(lhs, rhs, lhsNode, rhsNode) {
   comparisonValid(lhs, rhs);
 
   if (lhs instanceof Vector) {
@@ -1549,7 +1573,7 @@ export function lessThan(lhs, rhs) {
     if (lhs.units !== rhs.units) {
       scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
-        unitAlert(lhs.units, rhs.units, "comparison");
+        unitAlert(lhs, rhs, "comparison", "<", lhsNode, rhsNode);
       }
     }
 
@@ -1567,16 +1591,23 @@ export function lessThan(lhs, rhs) {
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["LTEQ"] = function (node, scope, simulate) {
-  return lessThanEq(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)));
+  return lessThanEq(
+    toNum(evaluateNode(node.children[0], scope, simulate)),
+    toNum(evaluateNode(node.children[1], scope, simulate)),
+    node.children[0],
+    node.children[1]
+  );
 };
 
 /**
  * @param {ValueType} lhs
  * @param {ValueType} rhs
+ * @param {TreeNode=} lhsNode
+ * @param {TreeNode=} rhsNode
  *
  * @returns {boolean}
  */
-export function lessThanEq(lhs, rhs) {
+export function lessThanEq(lhs, rhs, lhsNode, rhsNode) {
   comparisonValid(lhs, rhs);
 
   if (lhs instanceof Vector) {
@@ -1590,7 +1621,7 @@ export function lessThanEq(lhs, rhs) {
     if (lhs.units !== rhs.units) {
       scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
-        unitAlert(lhs.units, rhs.units, "comparison");
+        unitAlert(lhs, rhs, "comparison", "<=", lhsNode, rhsNode);
       }
     }
 
@@ -1608,15 +1639,22 @@ export function lessThanEq(lhs, rhs) {
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["GT"] = function (node, scope, simulate) {
-  return greaterThan(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)));
+  return greaterThan(
+    toNum(evaluateNode(node.children[0], scope, simulate)),
+    toNum(evaluateNode(node.children[1], scope, simulate)),
+    node.children[0],
+    node.children[1]
+  );
 };
 
 /**
  * @param {ValueType} lhs
  * @param {ValueType} rhs
+ * @param {TreeNode=} lhsNode
+ * @param {TreeNode=} rhsNode
  * @returns {boolean}
  */
-export function greaterThan(lhs, rhs) {
+export function greaterThan(lhs, rhs, lhsNode, rhsNode) {
   comparisonValid(lhs, rhs);
 
   if (lhs instanceof Vector) {
@@ -1629,7 +1667,7 @@ export function greaterThan(lhs, rhs) {
     if (lhs.units !== rhs.units) {
       scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
-        unitAlert(lhs.units, rhs.units, "comparison");
+        unitAlert(lhs, rhs, "comparison", ">", lhsNode, rhsNode);
       }
     }
 
@@ -1647,15 +1685,22 @@ export function greaterThan(lhs, rhs) {
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["GTEQ"] = function (node, scope, simulate) {
-  return greaterThanEq(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)));
+  return greaterThanEq(
+    toNum(evaluateNode(node.children[0], scope, simulate)),
+    toNum(evaluateNode(node.children[1], scope, simulate)),
+    node.children[0],
+    node.children[1]
+  );
 };
 
 /**
  * @param {ValueType} lhs
  * @param {ValueType} rhs
+ * @param {TreeNode=} lhsNode
+ * @param {TreeNode=} rhsNode
  * @returns {boolean}
  */
-export function greaterThanEq(lhs, rhs) {
+export function greaterThanEq(lhs, rhs, lhsNode, rhsNode) {
   comparisonValid(lhs, rhs);
 
   if (lhs instanceof Vector) {
@@ -1668,7 +1713,7 @@ export function greaterThanEq(lhs, rhs) {
     if (lhs.units !== rhs.units) {
       scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
-        unitAlert(lhs.units, rhs.units, "comparison");
+        unitAlert(lhs, rhs, "comparison", ">=", lhsNode, rhsNode);
       }
     }
 
@@ -1686,7 +1731,12 @@ export function greaterThanEq(lhs, rhs) {
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["PLUS"] = function (node, scope, simulate) {
-  return plus(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)));
+  return plus(
+    toNum(evaluateNode(node.children[0], scope, simulate)),
+    toNum(evaluateNode(node.children[1], scope, simulate)),
+    node.children[0],
+    node.children[1]
+  );
 };
 
 
@@ -1696,10 +1746,12 @@ funcEvalMap["PLUS"] = function (node, scope, simulate) {
  *
  * @param {L} lhs
  * @param {R} rhs
+ * @param {TreeNode=} lhsNode
+ * @param {TreeNode=} rhsNode
  *
  * @returns {L extends Vector ? Vector : (R extends Vector ? Vector : (L extends string ? string: (R extends string ? string : Material)))}
  */
-export function plus(lhs, rhs) {
+export function plus(lhs, rhs, lhsNode, rhsNode) {
   if (lhs instanceof Vector) {
     return lhs.cloneCombine(rhs, plus, false);
   } else if (rhs instanceof Vector) {
@@ -1711,7 +1763,7 @@ export function plus(lhs, rhs) {
     if (lhs.units !== rhs.units) {
       scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
-        unitAlert(lhs.units, rhs.units, "addition");
+        unitAlert(lhs, rhs, "addition", "+", lhsNode, rhsNode);
       } else if (scale !== 1) {
         explicitUnits = false;
       }
@@ -1751,8 +1803,14 @@ export function plus(lhs, rhs) {
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["MINUS"] = function (node, scope, simulate) {
-  return minus(toNum(evaluateNode(node.children[0], scope, simulate)), toNum(evaluateNode(node.children[1], scope, simulate)));
+  return minus(
+    toNum(evaluateNode(node.children[0], scope, simulate)),
+    toNum(evaluateNode(node.children[1], scope, simulate)),
+    node.children[0],
+    node.children[1]
+  );
 };
+
 
 
 /**
@@ -1761,10 +1819,12 @@ funcEvalMap["MINUS"] = function (node, scope, simulate) {
  *
  * @param {L} lhs
  * @param {R} rhs
+ * @param {TreeNode=} lhsNode
+ * @param {TreeNode=} rhsNode
  *
  * @returns {L extends Vector ? Vector : (R extends Vector ? Vector : Material)}
  */
-export function minus(lhs, rhs) {
+export function minus(lhs, rhs, lhsNode, rhsNode) {
 
   if (lhs instanceof Vector) {
     return lhs.cloneCombine(rhs, minus, false);
@@ -1777,7 +1837,7 @@ export function minus(lhs, rhs) {
     if (lhs.units !== rhs.units) {
       scale = convertUnits(rhs.units, lhs.units);
       if (scale === 0) {
-        unitAlert(lhs.units, rhs.units, "subtraction");
+        unitAlert(lhs, rhs, "subtraction", "-", lhsNode, rhsNode);
       } else if (scale !== 1) {
         explicitUnits = false;
       }
@@ -2097,8 +2157,8 @@ funcEvalMap["IDENT"] = function (node, scope, simulate) {
   let varName = node.text;
 
   while (!scope.has(varName)) {
-    if (scope.get("-parent")) {
-      scope = scope.get("-parent");
+    if (scope.get(PARENT_SYMBOL)) {
+      scope = scope.get(PARENT_SYMBOL);
     } else {
       throw new ModelError(`The variable or function "${node.origText}" does not exist.`, {
         code: 7038
@@ -2484,8 +2544,9 @@ function makeFunctionCall(varName, varNames, varDefaults, node, scope, simulate)
         code: 7049
       });
     }
+    /** @type {Map<PARENT_SYMBOL|string, any>} */
     let localScope = new Map([
-      ["-parent", scope]
+      [PARENT_SYMBOL, scope]
     ]);
 
     for (let i = 0; i < x.length; i++) {
@@ -2543,7 +2604,7 @@ funcEvalMap["TRYCATCH"] = function (node, scope, simulate) {
   } catch (err) {
     
     /** @type {Map} */
-    let localScope = new Map([[ "-parent", scope ]]);
+    let localScope = new Map([[ PARENT_SYMBOL, scope ]]);
     if (err instanceof ModelError) {
       localScope.set(node.children[2].text, stringify(err.message, simulate));
     } else {
@@ -2561,7 +2622,7 @@ funcEvalMap["TRYCATCH"] = function (node, scope, simulate) {
 funcEvalMap["WHILE"] = function (node, scope, simulate) {
   let lastResult = new Material(0);
   
-  let innerScope = new Map([[ "-parent", scope ]]);
+  let innerScope = new Map([[ PARENT_SYMBOL, scope ]]);
   while (trueValue(toNum(evaluateNode(node.children[0], scope, simulate)))) {
     lastResult = evaluateNode(node.children[1], innerScope, simulate);
   }
@@ -2575,7 +2636,7 @@ funcEvalMap["WHILE"] = function (node, scope, simulate) {
  */
 funcEvalMap["IFTHENELSE"] = function (node, scope, simulate) {
   
-  let innerScope = new Map([[ "-parent", scope ]]);
+  let innerScope = new Map([[ PARENT_SYMBOL, scope ]]);
   let i;
   for (i = 0; i < node.children[0].children.length; i++) {
     if (trueValue(toNum(evaluateNode(node.children[0].children[i], scope, simulate)))) {
@@ -2599,7 +2660,7 @@ funcEvalMap["FORIN"] = function (node, scope, simulate) {
   let id = node.children[0].text;
 
   
-  let innerScope = new Map([[ "-parent", scope ]]);
+  let innerScope = new Map([[ PARENT_SYMBOL, scope ]]);
   let vec = evaluateNode(node.children[1], scope, simulate);
   if (!(vec instanceof Vector)) {
     throw new ModelError("The in argument of a For-In loop must be a vector.", {
@@ -2628,7 +2689,7 @@ funcEvalMap["FOR"] = function (node, scope, simulate) {
     by = toNum(evaluateNode(node.children[1].children[2], scope, simulate));
   }
   /** @type {Map} */
-  let innerScope = new Map([[ "-parent", scope ]]);
+  let innerScope = new Map([[ PARENT_SYMBOL, scope ]]);
 
   innerScope.set(id, start);
   while (fn[by.value >= 0 ? "<=" : ">="](innerScope.get(id).value, toNum(evaluateNode(node.children[1].children[1], scope, simulate)))) {
@@ -2688,13 +2749,13 @@ funcEvalMap["ASSIGN"] = function (node, scope, simulate) {
       }
 
       let origScope = scope;
-      while (scope.get("-parent") !== null) {
-        if (scope.get(varName) !== undefined) {
+      while (scope.get(PARENT_SYMBOL) !== null) {
+        if (scope.has(varName)) {
           break;
         }
-        scope = scope.get("-parent");
+        scope = scope.get(PARENT_SYMBOL);
       }
-      if (scope.get("-parent") === null && scope.get(varName) === undefined) {
+      if (scope.get(PARENT_SYMBOL) === null && !scope.has(varName)) {
         scope = origScope;
       }
 
@@ -3048,7 +3109,7 @@ trimEvalMap["PLUS"] = function (node, scope, simulate) {
   let lhs = trimNode(node.children[0], scope, simulate);
   let rhs = trimNode(node.children[1], scope, simulate);
   if (isConst(lhs) && isConst(rhs)) {
-    return plus(lhs, rhs);
+    return plus(lhs, rhs, lhs, rhs);
   } else {
     let n = new TreeNode(node.origText, node.typeName, node.position);
     n.children = [lhs, rhs];
@@ -3066,7 +3127,7 @@ trimEvalMap["MINUS"] = function (node, scope, simulate) {
   let lhs = trimNode(node.children[0], scope, simulate);
   let rhs = trimNode(node.children[1], scope, simulate);
   if (isConst(lhs) && isConst(rhs)) {
-    return minus(lhs, rhs);
+    return minus(lhs, rhs, lhs, rhs);
   } else {
     let n = new TreeNode(node.origText, node.typeName, node.position);
     n.children = [lhs, rhs];
