@@ -25,7 +25,7 @@ describe.each([
         name: "My Flow"
       });
       s.initial = "100";
-      f.rate = "0.1*[Alpha]";
+      f.rate = "0.1*[My Stock]";
 
       let res = m.simulate();
       let times = res.times();
@@ -589,7 +589,7 @@ describe.each([
       let outF = m.Flow(s, null, {
         name: "Outflow"
       });
-      outF.rate = "[Alpha]";
+      outF.rate = "[My Stock]";
 
       f.rate = "2";
       res = m.simulate();
@@ -738,8 +738,8 @@ describe.each([
       m.Link(sA, total);
       m.Link(sB, total);
 
-      f.rate = ".2 * [Alpha]";
-      f2.rate = ".3 * [Alpha]";
+      f.rate = ".2 * [A]";
+      f2.rate = ".3 * [B]";
 
 
       sA.initial = 100;
@@ -3038,6 +3038,10 @@ describe.each([
 
       // perfectly correlated
       p2.value = "PastCorrelation([x], [x])";
+      res = m.simulate();
+      expect(Math.round(res.series(p2)[6] * 10000)).toBe(10000);
+
+      p2.value = "[x].PastCorrelation([x])";
       res = m.simulate();
       expect(Math.round(res.series(p2)[6] * 10000)).toBe(10000);
 

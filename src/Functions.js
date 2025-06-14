@@ -201,7 +201,7 @@ export function createFunctions(simulate) {
     }
   });
 
-  defineFunction(simulate, "PastCorrelation", { params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "[Primitive]", noVector: true, needPrimitive: true, object: [simulate.varBank, PrimitiveObject] }, { name: "Past Range", vectorize: true, defaultVal: "All Time" }] }, (x) => {
+  defineFunction(simulate, "PastCorrelation", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Past Range", vectorize: true, defaultVal: "All Time" }] }, (x) => {
     let items1;
     let items2;
     if (x.length === 2) {
@@ -592,7 +592,7 @@ export function createFunctions(simulate) {
     });
   });
 
-  defineFunction(simulate, "SetValue", { object: [simulate.varBank, VectorObject, PrimitiveObject, AgentObject], params: [{ name: "[Population]" }, { needPrimitive: true, name: "[Primitive]" }, { name: "Value", noVector: true, allowBoolean: true }] }, (x) => { // need population should be false
+  defineFunction(simulate, "SetValue", { object: [simulate.varBank, VectorObject, PrimitiveObject, AgentObject], params: [{ name: "[Population]" }, { needPrimitive: true, name: "[Primitive]" }, { name: "Value", allowBoolean: true }] }, (x) => { // need population should be false
     let id = x[1].id;
 
     let population = null;

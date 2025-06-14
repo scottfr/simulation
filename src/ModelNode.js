@@ -1,7 +1,35 @@
-import { DOMParser } from "../vendor/xmldom/dom-parser.js";
 // eslint-disable-next-line
 import { Stock, Variable, State, Action, Population, Transition, Flow, Link, Folder, Agent, Converter, Primitive } from "./api/Blocks.js";
 
+
+export function modelNodeClone(node, parent) {
+  let obj = new ModelNode();
+  obj.value = node.cloneNode(true);
+  obj.parent = parent;
+  
+  let currIds = ["1"].concat(primitives(findRootParent(parent)).map(x => x.id).filter(x => !!x));
+  
+  if (node.attributes.length > 0) {
+    for (let j = 0; j < node.attributes.length; j++) {
+      let attribute = node.attributes.item(j);
+      obj.setAttribute(attribute.nodeName, attribute.nodeValue);
+    }
+  }
+  
+  obj.setAttribute("id", "" + (Math.max.apply(null, currIds) + 1));
+  
+  return obj;
+}
+
+
+
+  
+function findRootParent(node) {
+  if (node.parent) {
+    return findRootParent(node.parent);
+  }
+  return node;
+}
 
 
 export class ModelNode {
@@ -28,6 +56,18 @@ export class ModelNode {
 
     /** @type {ModelNode} */
     this.target = null;
+
+    // Used for importing and exporting
+    this.geometry = {
+      x: 0,
+      y: 0,
+      width: 40,
+      height: 100,
+      sourcePoint: null,
+      targetPoint: null,
+    };
+    /** @type {string} */
+    this.style = null;
   }
 
   /**
@@ -122,128 +162,6 @@ export class ModelNode {
   }
 }
 
-
-
-
-/**
- * @param {string} modelString
- *
- * @returns
- */
-export function loadXML(modelString) {
-  let oParser = new DOMParser();
-  let data = oParser.parseFromString(modelString, "text/xml");
-  let graph = graphXMLToNodes(data);
-
-
-  graph.children[0].value = { nodeName: "root" };
-  graph.children[0].id = "1";
-
-  let connectors = primitives(/** @type {any} */(graph), ["Flow", "Link", "Transition"]);
-
-
-  let items = primitives(graph);
-  connectors.forEach((x) => {
-    x.source = null;
-    x.target = null;
-    items.forEach((i) => {
-      if (x.children[0].getAttribute("source") && x.children[0].getAttribute("source") === i.id) {
-        x.source = i;
-      }
-      if (x.children[0].getAttribute("target") && x.children[0].getAttribute("target") === i.id) {
-        x.target = i;
-      }
-    });
-  });
-
-  function cleanNode(x) {
-    if (x.children) {
-      let nodes = x.children.filter((c) => c.value.nodeName === "mxCell");
-
-      if (nodes.length > 0) {
-        if (nodes[0].getAttribute("parent")) {
-          let parent = items.find(item => item.id === nodes[0].getAttribute("parent"));
-          if (parent && parent.value.nodeName === "Folder") {
-            parent.addChild(x);
-          }
-        }
-      }
-
-      x.children = x.children.filter((c) => c.value.nodeName !== "mxCell");
-
-      for (let i = x.children.length - 1; i >= 0; i--) {
-        cleanNode(x.children[i]);
-      }
-    }
-  }
-
-  cleanNode(graph);
-
-
-  return graph;
-}
-
-
-function findRootParent(node) {
-  if (node.parent) {
-    return findRootParent(node.parent);
-  }
-  return node;
-}
-
-export function modelNodeClone(node, parent) {
-  let obj = new ModelNode();
-  obj.value = node.cloneNode(true);
-  obj.parent = parent;
-
-  let currIds = ["1"].concat(primitives(findRootParent(parent)).map(x => x.id).filter(x => !!x));
-
-  if (node.attributes.length > 0) {
-    for (let j = 0; j < node.attributes.length; j++) {
-      let attribute = node.attributes.item(j);
-      obj.setAttribute(attribute.nodeName, attribute.nodeValue);
-    }
-  }
-
-  obj.setAttribute("id", "" + (Math.max.apply(null, currIds) + 1));
-
-  return obj;
-}
-
-
-function graphXMLToNodes(xml, parent) {
-  // Create the return object
-  let obj = new ModelNode();
-  obj.value = xml;
-  obj.parent = parent;
-
-  if (xml.nodeType === 1) { // element
-    // do attributes
-    if (xml.attributes.length > 0) {
-      for (let j = 0; j < xml.attributes.length; j++) {
-        let attribute = xml.attributes.item(j);
-        obj.attributes.set(attribute.nodeName, attribute.nodeValue);
-      }
-
-      obj.id = obj.attributes.get("id");
-    }
-  } else if (xml.nodeType === 3) { // text
-    return null;
-  }
-
-  if (xml.hasChildNodes()) {
-    obj.children = [];
-    for (let i = 0; i < xml.childNodes.length; i++) {
-      let item = xml.childNodes.item(i);
-      let x = graphXMLToNodes(item, obj);
-      if (x) {
-        obj.addChild(x);
-      }
-    }
-  }
-
-  return obj;
-}
 
 
 /**

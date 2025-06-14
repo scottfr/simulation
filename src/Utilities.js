@@ -24,11 +24,12 @@ export function toHTML(str) {
 
 /**
  * @param {any} nStr
+ * @param {boolean=} sanitize
  * @returns {string}
  */
-export function commaStr(nStr) {
+export function commaStr(nStr, sanitize=true) {
   if (typeof nStr === "string") {
-    return escape(nStr);
+    return sanitize ? toHTML(nStr) : nStr;
   }
 
   if (typeof nStr === "boolean") {

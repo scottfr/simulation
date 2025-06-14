@@ -55,6 +55,7 @@ import { Model } from "./api/Model.js";
  * @property {number=} rate
  * @property {function=} createResultsWindow
  * @property {import("./api/Model.js").Model=} model
+ * @property {boolean=} pauseEachTimeStep - if true, will pause each step (including the start)
  */
 
 
@@ -118,7 +119,7 @@ export function checkErr(err, config, simulate) {
 
   if (errOut.error) {
     // remove HTML
-    errOut.error = errOut.error.replace(/<br\s*\/?>/g, "\n").replace(/<[^>]*>?/gm, "");
+    errOut.error = errOut.error.replace(/<br\s*\/?>/g, "\n").replace(/<[^>]*>?/gm, "").replace("&lt;", "<").replace("&gt;", ">");
   }
 
   if (simulate.evaluatingPosition) {
@@ -219,7 +220,7 @@ function innerRunSimulation(simulate, config) {
     /** @type {import("./formula/Units").UnitDefinition[]} */
     let units = [];
     for (let unit of customUnits) {
-      if (unit.target.trim()) { // It has a synonym, otherwise we don't need to add it
+      if (unit.target?.trim()) { // It has a synonym, otherwise we don't need to add it
         let newUnit = {
           sourceString: unit.name,
           scale: unit.scale,
@@ -1495,16 +1496,10 @@ export function linkPrimitive(primitive, dna, simulate) {
 
       if (localNeighborhood.has("[alpha")) {
         alpha = /** @type {any} */ (localNeighborhood.get("[alpha"));
-        if (!localNeighborhood.has("alpha")) {
-          localNeighborhood.set("alpha", alpha);
-        }
       }
 
       if (localNeighborhood.has("[omega")) {
         omega = /** @type {any} */ (localNeighborhood.get("[omega"));
-        if (!localNeighborhood.has("omega")) {
-          localNeighborhood.set("omega", omega);
-        }
       }
 
       if (primitive instanceof STransition) {

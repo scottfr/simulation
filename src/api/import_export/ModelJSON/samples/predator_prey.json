@@ -1,0 +1,250 @@
+{
+    "engine": "SIMULATION_PACKAGE",
+    "name": "Predator Prey Model",
+    "description": "Version of the classic Lotka-Volterra model.",
+    "simulation": {
+        "algorithm": "RK4",
+        "time_start": 2000,
+        "time_length": 50,
+        "time_step": 0.5,
+        "time_units": "YEARS"
+    },
+    "elements": [
+        {
+            "type": "STOCK",
+            "name": "Prey",
+            "behavior": {
+                "initial_value": 400,
+                "non_negative": true,
+                "units": "Prey"
+            },
+            "display": {
+                "interactive": true,
+                "interactive_min": 0,
+                "interactive_max": 1000,
+                "coordinates": [
+                    135,
+                    214
+                ],
+                "size": [
+                    100,
+                    40
+                ]
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "Prey Birth Rate",
+            "display": {
+                "coordinates": [
+                    30,
+                    30
+                ],
+                "size": [
+                    120,
+                    50
+                ]
+            },
+            "behavior": {
+                "value": 0.25,
+                "units": "1 / Years"
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "Prey Death Rate",
+            "display": {
+                "coordinates": [
+                    285,
+                    371
+                ],
+                "size": [
+                    150,
+                    50
+                ]
+            },
+            "behavior": {
+                "value": "{0.005 1/(Predators * Years)} * [Predators]",
+                "units": "1 / Years"
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "Predator Birth Rate",
+            "display": {
+                "coordinates": [
+                    300,
+                    50
+                ],
+                "size": [
+                    120,
+                    50
+                ]
+            },
+            "behavior": {
+                "value": "{0.0002 1 / (Prey * Years)} * [Prey]",
+                "units": "1 / Years"
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "Predator Death Rate",
+            "display": {
+                "coordinates": [
+                    637,
+                    340
+                ],
+                "size": [
+                    120,
+                    50
+                ]
+            },
+            "behavior": {
+                "value": 0.25,
+                "units": "1 / Years"
+            }
+        },
+        {
+            "type": "STOCK",
+            "name": "Predators",
+            "behavior": {
+                "initial_value": 20,
+                "non_negative": true,
+                "units": "Predators"
+            },
+            "display": {
+                "interactive": true,
+                "interactive_min": 0,
+                "interactive_max": 100,
+                "coordinates": [
+                    506,
+                    212
+                ],
+                "size": [
+                    100,
+                    40
+                ]
+            }
+        },
+        {
+            "type": "FLOW",
+            "name": "Prey Births",
+            "from": null,
+            "to": "Prey",
+            "display": {
+                "from_coordinates": [
+                    185,
+                    62
+                ]
+            },
+            "behavior": {
+                "value": "[Prey]*[Prey Birth Rate]",
+                "non_negative": true,
+                "units": "Prey / Years"
+            }
+        },
+        {
+            "type": "FLOW",
+            "name": "Prey Deaths",
+            "from": "Prey",
+            "to": null,
+            "display": {
+                "to_coordinates": [
+                    185,
+                    422
+                ]
+            },
+            "behavior": {
+                "value": "[Prey]*[Prey Death Rate]",
+                "non_negative": true,
+                "units": "Prey / Years"
+            }
+        },
+        {
+            "type": "FLOW",
+            "name": "Predator Births",
+            "from": null,
+            "to": "Predators",
+            "display": {
+                "from_coordinates": [
+                    556,
+                    60
+                ]
+            },
+            "behavior": {
+                "value": "[Predators]*[Predator Birth Rate]",
+                "non_negative": true,
+                "units": "Predators / Years"
+            }
+        },
+        {
+            "type": "FLOW",
+            "name": "Predator Deaths",
+            "from": "Predators",
+            "to": null,
+            "display": {
+                "to_coordinates": [
+                    556,
+                    420
+                ]
+            },
+            "behavior": {
+                "value": "[Predator Death Rate]*[Predators]",
+                "non_negative": true,
+                "units": "Predators / Years"
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "Prey Birth Rate",
+            "to": "Prey Births"
+        },
+        {
+            "type": "LINK",
+            "from": "Prey Death Rate",
+            "to": "Prey Deaths"
+        },
+        {
+            "type": "LINK",
+            "from": "Predators",
+            "to": "Prey Death Rate"
+        },
+        {
+            "type": "LINK",
+            "from": "Predator Death Rate",
+            "to": "Predator Deaths"
+        },
+        {
+            "type": "LINK",
+            "from": "Predator Birth Rate",
+            "to": "Predator Births"
+        },
+        {
+            "type": "LINK",
+            "from": "Prey",
+            "to": "Predator Birth Rate"
+        }
+    ],
+    "visualizations": [
+        {
+            "type": "TIME_SERIES",
+            "name": "Prey and Predators",
+            "elements": [
+                "Prey",
+                "Predators"
+            ]
+        },
+        {
+            "type": "TABLE",
+            "name": "Details Table",
+            "elements": [
+                "Predators",
+                "Prey",
+                "Predator Deaths",
+                "Predator Births",
+                "Prey Births",
+                "Prey Deaths"
+            ]
+        }
+    ]
+}

@@ -1,0 +1,154 @@
+{
+    "engine": "SIMULATION_PACKAGE",
+    "simulation": {
+        "algorithm": "RK1",
+        "time_start": 0,
+        "time_length": 20,
+        "time_step": 0.2,
+        "time_units": "WEEKS"
+    },
+    "elements": [
+        {
+            "type": "STOCK",
+            "name": "S",
+            "description": "Initial number of susceptible individuals.",
+            "behavior": {
+                "initial_value": 100
+            },
+            "display": {
+                "interactive": true,
+                "interactive_min": 0,
+                "interactive_max": 100,
+                "coordinates": [
+                    140,
+                    60
+                ],
+                "size": [
+                    100,
+                    40
+                ]
+            }
+        },
+        {
+            "type": "STOCK",
+            "name": "I",
+            "description": "Initial number of infected individuals.",
+            "behavior": {
+                "initial_value": 3
+            },
+            "display": {
+                "coordinates": [
+                    140,
+                    190
+                ],
+                "size": [
+                    100,
+                    40
+                ],
+                "interactive": true,
+                "interactive_min": 0,
+                "interactive_max": 100
+            }
+        },
+        {
+            "type": "STOCK",
+            "name": "R",
+            "description": "Initial number of recovered individuals.",
+            "behavior": {
+                "initial_value": 0
+            },
+            "display": {
+                "coordinates": [
+                    140,
+                    310
+                ],
+                "size": [
+                    100,
+                    40
+                ],
+                "interactive": true,
+                "interactive_min": 0,
+                "interactive_max": 100
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "γ",
+            "behavior": {
+                "value": 0.3
+            },
+            "display": {
+                "coordinates": [
+                    50,
+                    185
+                ],
+                "size": [
+                    50,
+                    50
+                ],
+                "interactive": true,
+                "interactive_min": 0,
+                "interactive_max": 1
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "β",
+            "behavior": {
+                "value": 0.01
+            },
+            "display": {
+                "coordinates": [
+                    50,
+                    40
+                ],
+                "size": [
+                    50,
+                    50
+                ],
+                "interactive": true,
+                "interactive_min": 0,
+                "interactive_max": 0.05
+            }
+        },
+        {
+            "type": "FLOW",
+            "name": "Infection",
+            "from": "S",
+            "to": "I",
+            "behavior": {
+                "value": "[β] * [S] * [I]"
+            }
+        },
+        {
+            "type": "FLOW",
+            "name": "Recovery",
+            "from": "I",
+            "to": "R",
+            "behavior": {
+                "value": "[γ] * [I]"
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "β",
+            "to": "Infection"
+        },
+        {
+            "type": "LINK",
+            "from": "γ",
+            "to": "Recovery"
+        }
+    ],
+    "visualizations": [
+        {
+            "type": "TIME_SERIES",
+            "name": "Disease Spread",
+            "elements": [
+                "I",
+                "R",
+                "S"
+            ]
+        }
+    ]
+}

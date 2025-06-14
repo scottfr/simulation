@@ -19,10 +19,9 @@ test("find()", () => {
   expect(m.find(s => s.name === "y")).toHaveLength(2);
   expect(m.find(s => ["x", "y", "fvdf"].includes(s.name))).toHaveLength(3);
 
-
   let id = m.get(x => x.name === "x").id;
   expect(m.getId(id)).not.toBeNull();
-  expect(m.getId("gfdgdfg")).toBeNull();
+  expect(() => m.getId("gfdgdfg")).toThrow(/No matching/);
 });
 
 
@@ -106,4 +105,47 @@ it("ConverterTable", () => {
   v.value = "ConverterTable([v2])";
 
   expect(() => m.simulate()).toThrow("requires a Converter primitive as its parameter");
+});
+
+
+it("Unicode in primitive names, units and identifier names", () => {
+  let m = new Model();
+
+  m.globals = `
+  function 四舍五入(数字)
+    return round(数字 * 100) / 100
+  end function
+  `;
+
+  let s = m.Stock({
+    name: "钱",
+    units: "美元",
+    initial: "100"
+  });
+  let f = m.Flow(null, s, {
+    name: "利息",
+    units: "美元/years",
+    rate: "[ταχύτητα]*[钱]"
+  });
+  let r = m.Variable({
+    name: "ταχύτητα",
+    value: "0.01",
+    units: "1/years"
+  });
+  m.Link(r, f);
+
+  let rounded = m.Variable({
+    name: "rounded",
+    value: "四舍五入([钱])",
+    units: "美元"
+  });
+
+  m.Link(s, rounded);
+
+  let res = m.simulate();
+
+  expect(res.value(s, 0)).toBe(100);
+  expect(res.value(s, 1)).toBe(101);
+
+  expect(Math.round(res.value(s, 20) * 100) / 100).toBe(res.value(rounded, 20));
 });

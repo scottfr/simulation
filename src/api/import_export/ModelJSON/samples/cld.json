@@ -1,0 +1,122 @@
+{
+    "elements": [
+        {
+            "type": "VARIABLE",
+            "name": "Population",
+            "display": {
+                "coordinates": [
+                    140,
+                    100
+                ],
+                "size": [
+                    120,
+                    50
+                ]
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "Births",
+            "display": {
+                "coordinates": [
+                    90,
+                    280
+                ],
+                "size": [
+                    120,
+                    50
+                ]
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "Carrying Capacity",
+            "display": {
+                "coordinates": [
+                    480,
+                    60
+                ],
+                "size": [
+                    130,
+                    50
+                ]
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "Deaths",
+            "display": {
+                "coordinates": [
+                    430,
+                    180
+                ],
+                "size": [
+                    120,
+                    50
+                ]
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "Population",
+            "to": "Deaths",
+            "behavior": {
+                "polarity": "POSITIVE"
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "Population",
+            "to": "Births",
+            "behavior": {
+                "polarity": "POSITIVE"
+            }
+        },
+        {
+            "type": "VARIABLE",
+            "name": "Net Growth",
+            "display": {
+                "coordinates": [
+                    320,
+                    320
+                ],
+                "size": [
+                    120,
+                    50
+                ]
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "Deaths",
+            "to": "Net Growth",
+            "behavior": {
+                "polarity": "NEGATIVE"
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "Carrying Capacity",
+            "to": "Deaths",
+            "behavior": {
+                "polarity": "NEGATIVE"
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "Births",
+            "to": "Net Growth",
+            "behavior": {
+                "polarity": "POSITIVE"
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "Net Growth",
+            "to": "Population",
+            "behavior": {
+                "polarity": "POSITIVE"
+            }
+        }
+    ]
+}

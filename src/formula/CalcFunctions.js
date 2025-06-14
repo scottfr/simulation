@@ -1745,7 +1745,7 @@ export function defineFunction(simulate, name, definition, fn) {
       x[i] = simplify(x[i]);
 
       if (config.noUnits && (toNum(x[i]) instanceof Material) && toNum(x[i]).units && !toNum(x[i]).units.isUnitless()) {
-        throw new ModelError(`${fnName} does not accept units for the parameter '${config.name}'.`, {
+        throw new ModelError(`${fnName} does not accept units for the parameter '${config.name}'. Got units of <i>${toNum(x[i]).units.toString()}</i>`, {
           code: 6054
         });
       }

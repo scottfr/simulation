@@ -1,0 +1,168 @@
+{
+    "engine": "SIMULATION_PACKAGE",
+    "name": "Bathtub",
+    "simulation": {
+        "algorithm": "RK1",
+        "time_start": 0,
+        "time_length": 20,
+        "time_step": 1,
+        "time_units": "MINUTES"
+    },
+    "elements": [
+        {
+            "type": "STATE",
+            "name": "Is Filling",
+            "display": {
+                "coordinates": [
+                    630,
+                    110
+                ],
+                "size": [
+                    100,
+                    40
+                ]
+            },
+            "behavior": {
+                "initial_value": true
+            }
+        },
+        {
+            "type": "STATE",
+            "name": "Is Bathing",
+            "display": {
+                "coordinates": [
+                    630,
+                    230
+                ],
+                "size": [
+                    100,
+                    40
+                ]
+            },
+            "behavior": {
+                "initial_value": false
+            }
+        },
+        {
+            "type": "STATE",
+            "name": "Is Draining",
+            "display": {
+                "coordinates": [
+                    630,
+                    350
+                ],
+                "size": [
+                    100,
+                    40
+                ]
+            },
+            "behavior": {
+                "initial_value": false
+            }
+        },
+        {
+            "type": "TRANSITION",
+            "name": "Done Filling",
+            "from": "Is Filling",
+            "to": "Is Bathing",
+            "behavior": {
+                "trigger": "TIMEOUT",
+                "value": 5
+            }
+        },
+        {
+            "type": "TRANSITION",
+            "name": "Bath Over",
+            "from": "Is Bathing",
+            "to": "Is Draining",
+            "behavior": {
+                "trigger": "TIMEOUT",
+                "value": 5
+            }
+        },
+        {
+            "type": "STOCK",
+            "name": "Bathtub",
+            "description": "The bathtub starts empty.",
+            "display": {
+                "coordinates": [
+                    390,
+                    220
+                ],
+                "size": [
+                    100,
+                    40
+                ]
+            },
+            "behavior": {
+                "initial_value": 0,
+                "non_negative": true,
+                "units": "Liters"
+            }
+        },
+        {
+            "type": "FLOW",
+            "name": "Filling",
+            "description": "Water fills at a rate of 10 liters per minute.",
+            "from": null,
+            "to": "Bathtub",
+            "display": {
+                "from_coordinates": [
+                    440,
+                    90
+                ]
+            },
+            "behavior": {
+                "value": "if [Is Filling] then\n  10\nend if",
+                "non_negative": true,
+                "units": "Liters/Minute"
+            }
+        },
+        {
+            "type": "FLOW",
+            "name": "Draining",
+            "description": "Water drains at a rate of 20% per minute.",
+            "from": "Bathtub",
+            "to": null,
+            "display": {
+                "to_coordinates": [
+                    440,
+                    400
+                ]
+            },
+            "behavior": {
+                "value": "if [Is Draining] then\n  {0.2 1/Minute} * [Bathtub]\nend if",
+                "non_negative": true,
+                "units": "Liters/Minute"
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "Is Filling",
+            "to": "Filling"
+        },
+        {
+            "type": "LINK",
+            "from": "Is Draining",
+            "to": "Draining"
+        }
+    ],
+    "visualizations": [
+        {
+            "type": "TIME_SERIES",
+            "name": "Bathtub Volume",
+            "elements": [
+                "Bathtub"
+            ]
+        },
+        {
+            "type": "TIME_SERIES",
+            "name": "States",
+            "elements": [
+                "Is Filling",
+                "Is Bathing",
+                "Is Draining"
+            ]
+        }
+    ]
+}

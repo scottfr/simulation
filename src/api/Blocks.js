@@ -521,7 +521,15 @@ export class Converter extends ValuedPrimitive {
       return v;
     }
 
-    return /** @type {ValuedPrimitive} */ (this.model.getId(v));
+    let p = null;
+    try {
+      p = this.model.getId(v);
+    } catch (_err) {
+      // the source does not exist, return null;
+    }
+    
+
+    return /** @type {ValuedPrimitive} */ (p);
   }
 
   /**
@@ -603,7 +611,7 @@ export class Flow extends ValuedPrimitive {
 
 /**
  * @typedef {object} LinkConfig
- * @param {boolean=} biDirectional
+ * @property {boolean=} biDirectional
  * @property {Primitive=} start
  * @property {Primitive=} end
  */
@@ -904,7 +912,14 @@ export class Population extends Primitive {
       return null;
     }
 
-    return /** @type {Agent} */ (this.model.getId(targetId));
+    let base = null;
+    try {
+      base = this.model.getId(targetId);
+    } catch (_err) {
+      // the source does not exist, return null;
+    }
+
+    return /** @type {Agent} */ (base);
   }
 
   /**

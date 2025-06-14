@@ -1,16 +1,76 @@
-# `simulation` - Simulation and modeling for Node and the browser
+# `simulation` - Simulation and modeling for Node and browsers
 
 `simulation` is a multi-method simulation package for Node or the browser. Use it to create models for the environment, business, or other areas. For example, it can be used to create models of disease spread, population growth, or the adoption of a product in the marketplace.
 
 `simulation` supports differential equation models (also called System Dynamics models) in addition to Agent Based Models, or any mixture of the two techniques.
 
-In addition to building models directly with the package, `simulation` also supports importing and running models built with [Insight Maker](https://insightmaker.com).
+In addition to building models directly with the package, `simulation` also supports importing and running models in the [ModelJSON](https://github.com/scottfr/modeljson) format or the [Insight Maker](https://insightmaker.com) format.
 
-## Installing the package
+## Quickstart
 
-### Installation with NPM
+Copy this HTML into an *index.html* file and open it in your browser.
 
-Node installation:
+```html
+<script type="importmap">
+  {
+    "imports": {
+      "simulation": "https://unpkg.com/simulation@7.0.0",
+      "chart.js": "https://unpkg.com/chart.js@3.9.1/dist/chart.esm.js"
+    }
+  }
+</script>
+
+<script type="module">
+
+import { Model } from "simulation";
+import { Chart, registerables } from 'chart.js';
+
+// Define the simulation model
+
+let m = new Model({
+    timeLength: 20
+});
+let people = m.Stock({
+  name: "People",
+  initial: 10000
+});
+let netGrowth = m.Flow(null, people, {
+  rate: "[People] * 0.10"
+});
+
+
+// Simulate the model
+
+let res = m.simulate();
+
+
+// Create the chart of population growth using Chart.js
+
+Chart.register(...registerables);
+new Chart(document.getElementById('chart').getContext('2d'), {
+    type: 'line',
+    data: {
+        labels: res.times(),
+        datasets: [{
+            label: 'Population',
+            data: res.series(people),
+            borderColor: 'blue'
+        }]
+    }
+});
+
+</script>
+
+<canvas id="chart"></canvas>
+```
+
+![Canvas Chart](docs/images/canvas_chart.png)
+
+Note that this neither bundles nor minifies the code. For production use cases, it is recommended to use a bundler.
+
+## Installing with NPM
+
+To use the package with NPM and Node.js, run this command:
 
 ```shell
 npm install --save simulation
@@ -23,16 +83,6 @@ In the README, we will also be using the optional `simulation-viz-console` packa
 ```shell
 npm install --save simulation-viz-console
 ```
-
-### Directly importing the modules
-
-You can also import `simulation` ES6 modules directly from the source code without using NPM:
-
-```javascript
-import { Model } from "simulation/src/api/Model.js";
-```
-
-The code will work without transpilation in modern browsers.
 
 ## Example usage
 
@@ -166,7 +216,7 @@ Let's now look at a more complex model: disease spread. One simple way to model 
 
 * **Susceptible** people who are healthy and can be infected,
 * **Infected** people who are sick and spreading the disease,
-* and, **Recovered** people who were infected but are now better. We'll also assume recovered people and are now immune to the disease.
+* and, **Recovered** people who were infected but are now better. We'll also assume recovered people are now immune to the disease.
 
 We'll use three stocks to represent these categories, and we'll use flows to move people between them.
 
@@ -437,9 +487,9 @@ When building interactive simulations, you can adjust values within the simulati
 
 To do so, use the `simulateAsync` method of a `Model`. `simulateAsync` returns a promise that resolves to the completed simulation results or rejects with an error.
 
-`simulateAsync` takes a single parameter containing an object with an async `onPause` function. `onPause` is awaited whenever the simulation is paused. You can specify how often the simulation is paused with the `timePause` model property (set it to the same value as the time step to pause each time step) or by calling the `pause()` function within the simulation. 
+`simulateAsync` takes a single parameter containing an object with an async `onStep` function. `onStep` is awaited at the end of each time step.
 
-When `onPause` is called, it is passed the current simulation state along with a `setValue(primitive, value)` method. Calling `setValue` sets the current value of `primitive` to `value`.
+When `onStep` is called, it is passed the current simulation state along with a `setValue(primitive, value)` method. Calling `setValue` sets the current value of `primitive` to `value`.
 
 Here is an example of an interactive simulation where the user decides how much water flows into a bucket each time step:
 
@@ -468,8 +518,7 @@ let m = new Model({
   timeStart: 2020,
   timeLength: 5,
   timeUnits: "Years",
-  timeStep: 1,
-  timePause: 1 // Pause the simulation each year
+  timeStep: 1
 });
 
 
@@ -486,7 +535,11 @@ let inflow = m.Flow(null, bucket, {
 
 
 let results = await m.simulateAsync({
-  onPause: async (simulation) => {
+  onStep: async (simulation) => {
+    if (simulation.time === m.timeStart + m.timeLength) {
+      // It's the end of the simulation, so we don't need to ask for input
+      return;
+    }
     console.log(`[Time: ${simulation.time}; Current bucket volume: ${simulation.results.value(bucket, simulation.time)}]`);
 
     let newRate = await getNumber("Enter the new inflow rate as a number (e.g. 5 or 2.7): ");
@@ -504,7 +557,7 @@ process.exit();
 
 ## Equations
 
-`simulation` uses a DSL for its equations. This allows us to cleanly implement features like built-in units and vectors.
+`simulation` uses a DSL for its equations. This allows us to cleanly implement features like built-in units and vectors. Documentation for the equation capabilities are available [here](/equations.md). A brief overview of capabilities follows.
 
 Values of other primitives are referenced with the notation `[Primitive Name]`. When referencing a primitive, the primitives must either be connected directly (e.g. a flow connected to a stock) or connected via a link (e.g. `Model.link(referencedPrimitive, referencingPrimitive)`).
 
@@ -574,9 +627,7 @@ add(1, 2)
 
 ### Built-in functions
 
-See here for a list of built-in functions:
-
-https://insightmaker.com/functions
+`simulation` has an [extensive list of built-in functions](/equations.md).
 
 
 ## Simulation algorithms
@@ -604,6 +655,42 @@ Euler's method is the simpler of the two methods. It evaluates all the flow rate
 The 4th order Runge Kutta method is more complex and requires four different flow rate evaluations for each time step. These four rates are averaged to get the final flow rate which is used to move the simulation forward by the time step.
 
 Model accuracy may be increased by decreasing the time step (at the cost of increased computation). Cutting the time step in half will double the computation required. Between the two methods, Runge Kutta is more accurate per unit of computation than Euler's method. The exception is if your model contains sharp discontinuities in flow rates (like step functions), in which case the averaging behavior in the Runge Kutta method may not be desirable.
+
+
+
+## Importing and exporting ModelJSON files
+
+`simulation` supports importing and exporting models using the [ModelJSON format](https://github.com/scottfr/modeljson).
+
+Here we load a ModelJSON model and run it. Then we modify the model and convert the changed model back to ModelJSON.
+
+```javascript
+import { loadModelJSON, toModelJSON } from "simulation";
+
+// Load the model JSON for a model with a single variable
+let model = loadModelJSON({
+  elements: [
+    { type: "VARIABLE", name: "Y", behavior: { value: "years()" } }
+  ]
+});
+
+
+let v = model.getVariable(v => v.name === "Y");
+
+// Run the model and print the value of the variable
+let res = model.simulate();
+console.log("Final value: ", res.value(v))
+
+
+// Modify the model, changing the variable name
+v.name = "Year count"
+
+// Get the new ModelJSON
+console.log(toModelJSON(model));
+```
+
+
+Note that not all features of `simulation` models are supported in ModelJSON. For example, ModelJSON does not support the Agent Population primitive.
 
 
 ## Importing models from InsightMaker.com

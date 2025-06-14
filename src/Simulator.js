@@ -80,7 +80,7 @@ import Big from "../vendor/bigjs/big.js";
  * @property {function[]=} renderers
  * @property {string[]=} elementIds
  * @property {ResultsType=} res
- * @property {any[]=} times
+ * @property {number[]=} times
  * @property {SPrimitive[]=} objects
  * @property {string[]=} origIds
  * @property {any=} store
@@ -336,8 +336,15 @@ export class Simulator {
         priority: 1,
         action: (_task) => {
           this.sleep(true);
-          if (repeat && lessThan(plus(time, this.timePause), this.timeEnd)) {
-            addPause(plus(time, this.timePause), repeat);
+          if (
+            repeat
+            && (
+              this.config.pauseEachTimeStep ||
+              lessThan(plus(time, this.timePause), this.timeEnd))
+          ) {
+            addPause(plus(time,
+              this.config.pauseEachTimeStep ? this.userTimeStep : this.timePause
+            ), repeat);
           }
         }
       }));
@@ -371,8 +378,14 @@ export class Simulator {
         this.createSolver(this.simulationModel.solvers[solver]);
       }
 
-      if (this.timePause) {
-        addPause(plus(this.timeStart, this.timePause), true);
+      if (
+        this.config.pauseEachTimeStep
+        || this.timePause
+      ) {
+        addPause(
+          this.config.pauseEachTimeStep ? this.timeStart.fullClone() : plus(this.timeStart, this.timePause),
+          true
+        );
       }
 
       this.tasks.cursor = this.tasks.tasks.minNode();

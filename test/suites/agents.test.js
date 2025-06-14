@@ -1141,6 +1141,44 @@ describe.each([
       expect(() => m.simulate()).toThrow();
     });
 
+    
+    test("Vector SetValue with stocks", () => {
+      let m = new Model({ algorithm });
+      let f = m.Agent();
+
+      f.Stock({
+        name: "X",
+        initial: "{a: 1, b: 2, c: 3}"
+      });
+
+      let pop = m.Population({
+        name: "Population",
+        agentBase: f,
+        populationSize: 1
+      });
+      m.Link(f, pop);
+
+      let action = m.Action({
+        trigger: "Condition",
+        value: "years >= 2",
+        repeat: false,
+        action: "[Population].setValue([X], {a: 1, b: 4, c: 8})"
+      });
+      m.Link(pop, action);
+
+
+      let summarizer = m.Variable({
+        name: "Summarizer",
+        value: "Value([Population], [X]){1}"
+      });
+      m.Link(pop, summarizer);
+
+      let res = m.simulate();
+      expect(res.series(summarizer)[0]).toEqual({ a: 1, b: 2, c: 3 });
+      expect(res.series(summarizer)[1]).toEqual({ a: 1, b: 2, c: 3 });
+      expect(res.series(summarizer)[5]).toEqual({ a: 1, b: 4, c: 8 });
+    });
+
 
     test("Location validation", () => {
       let m = new Model({ algorithm });

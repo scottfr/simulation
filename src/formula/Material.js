@@ -89,7 +89,7 @@ export function unitAlert(lhs, rhs, type, operator, lhsNode, rhsNode) {
       }
     };
 
-    msg += `<br/><br/>Attempted ${type}: <b>${formatMat(lhs)} ${operator} ${formatMat(rhs)}</b>`;
+    msg += `<br/><br/>Attempted ${type}: <b>${formatMat(lhs)} ${operator.replace("<", "&lt;").replace(">", "&gt;")} ${formatMat(rhs)}</b>`;
 
     if (!lhsUnits) {
       if (lhsNode instanceof Material) {

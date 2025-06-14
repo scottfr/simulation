@@ -1,0 +1,107 @@
+{
+    "engine": "SIMULATION_PACKAGE",
+    "name": "Population Growth",
+    "simulation": {
+        "algorithm": "RK4",
+        "time_start": 0,
+        "time_length": 20,
+        "time_step": 0.2,
+        "time_units": "YEARS"
+    },
+    "elements": [
+        {
+            "type": "STOCK",
+            "name": "Population",
+            "display": {
+                "coordinates": [
+                    130,
+                    210
+                ],
+                "size": [
+                    100,
+                    40
+                ]
+            },
+            "behavior": {
+                "initial_value": 1,
+                "non_negative": true
+            }
+        },
+        {
+            "type": "CONVERTER",
+            "name": "Growth Rate",
+            "display": {
+                "coordinates": [
+                    260,
+                    90
+                ],
+                "size": [
+                    120,
+                    50
+                ]
+            },
+            "behavior": {
+                "input": "ELEMENT",
+                "interpolation": "LINEAR",
+                "data": [
+                    [
+                        0,
+                        2
+                    ],
+                    [
+                        1500,
+                        1.07
+                    ],
+                    [
+                        3990,
+                        0.429
+                    ],
+                    [
+                        6780,
+                        0.125
+                    ],
+                    [
+                        10000,
+                        0
+                    ]
+                ],
+                "input_element": "Population"
+            }
+        },
+        {
+            "type": "FLOW",
+            "name": "Flow",
+            "from": null,
+            "to": "Population",
+            "display": {
+                "from_coordinates": [
+                    180,
+                    60
+                ]
+            },
+            "behavior": {
+                "value": "[Population] * [Growth Rate]",
+                "non_negative": true
+            }
+        },
+        {
+            "type": "LINK",
+            "from": "Growth Rate",
+            "to": "Flow"
+        },
+        {
+            "type": "LINK",
+            "from": "Population",
+            "to": "Growth Rate"
+        }
+    ],
+    "visualizations": [
+        {
+            "type": "TIME_SERIES",
+            "name": "Default Display",
+            "elements": [
+                "Population"
+            ]
+        }
+    ]
+}

@@ -180,7 +180,7 @@ nodeBase.link.setAttribute("BiDirectional", "false");
 
 nodeBase.setting = doc.createElement("Setting");
 nodeBase.setting.setAttribute("Note", "");
-nodeBase.setting.setAttribute("Version", "37");
+nodeBase.setting.setAttribute("Version", "38");
 nodeBase.setting.setAttribute("Throttle", "1");
 nodeBase.setting.setAttribute("TimeLength", "100");
 nodeBase.setting.setAttribute("TimeStart", "0");

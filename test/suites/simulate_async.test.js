@@ -27,7 +27,7 @@ describe.each([
         name: "My Flow"
       });
       s.initial = "100";
-      f.rate = "0.1*[Alpha]";
+      f.rate = "0.1*[My Stock]";
   
       let res = await m.simulateAsync();
       let times = res.times();
@@ -57,7 +57,8 @@ describe.each([
       expect(m.simulateAsync()).rejects.toEqual({
         error: "Cannot convert Booleans to Numbers.",
         errorCode: 1089,
-        errorPrimitive: s
+        errorPrimitiveName: s.name,
+        errorPrimitiveId: s.id
       });
         
     });
@@ -69,7 +70,6 @@ describe.each([
       m.timeStep = 1;
       m.timeStart = 0;
       m.timeLength = 10;
-      m.timePause = 1;
     
       let v = m.Variable({
         name: "My var",
@@ -77,20 +77,23 @@ describe.each([
       });
     
       let val = 100;
+      let steps = 0;
 
       let res = await m.simulateAsync({
-        onPause: (items) => {
+        onStep: (items) => {
           val = val + 1;
           items.setValue(v, val);
+          steps++;
         }
       });
 
       let times = res.times();
       expect(times.length).toBe(11);
+      expect(steps).toBe(11);
       expect(times[0]).toBe(0);
       expect(times[10]).toBe(10);
       expect(res.series(v)[0]).toBe(100);
-      expect(res.series(v).at(-1)).toBe(109);
+      expect(res.series(v).at(-1)).toBe(110);
       
       expect(res.timeUnits).toBe("years");
     });
@@ -103,7 +106,6 @@ describe.each([
       m.timeStep = 1;
       m.timeStart = 0;
       m.timeLength = 10;
-      m.timePause = 1;
 
       let v = m.Variable({
         name: "Val",
@@ -128,7 +130,7 @@ describe.each([
       
   
       let res = await m.simulateAsync({
-        onPause: (items) => {
+        onStep: (items) => {
           if (items.time === 3) {
             items.setValue(v, 1);
           } else if (items.time === 6) {
@@ -152,7 +154,6 @@ describe.each([
       m.timeStep = 1;
       m.timeStart = 0;
       m.timeLength = 10;
-      m.timePause = 1;
     
       let v = m.Variable({
         name: "My var",
@@ -165,7 +166,7 @@ describe.each([
       let val = 100;
 
       await expect(m.simulateAsync({
-        onPause: (items) => {
+        onStep: (items) => {
           val = val + 1;
           items.setValue(v, val);
         }

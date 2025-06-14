@@ -1,11 +1,16 @@
-import { loadXML, modelNodeClone, ModelNode, primitives } from "../ModelNode.js";
+import { ModelNode, modelNodeClone, primitives } from "../ModelNode.js";
 import { runSimulation } from "../Modeler.js";
 import { nodeBase } from "../Constants.js";
 // eslint-disable-next-line
 import { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder } from "./Blocks.js";
 import { Results } from "./Results.js";
 import { SimulationError } from "./SimulationError.js";
-export { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder };
+import { createModelJSON, loadModelJSON } from "./import_export/ModelJSON/ModelJSON.js";
+import { loadInsightMaker } from "./import_export/InsightMaker/InsightMaker.js";
+import { Simulator } from "../Simulator.js";
+import { trimTree, createTree } from "../formula/Formula.js";
+import { ModelError } from "../formula/ModelError.js";
+export { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder, createModelJSON as toModelJSON, loadModelJSON, loadInsightMaker };
 
 
 /**
@@ -30,25 +35,6 @@ export { Primitive, Stock, Variable, Converter, State, Action, Population, Flow,
  */
 
 
-
-/**
- * @param {string} xml
- */
-export function loadInsightMaker(xml) {
-  let root = loadXML(xml);
-
-  let m = new Model();
-
-  m._graph = /** @type {any} */ (root);
-
-  primitives(m._graph).map(x => x.primitive(m));
-
-  m.settings = /** @type {any} */ (primitives(m._graph, "Setting")[0]);
-
-  removeModelGhosts(m);
-
-  return m;
-}
 
 
 /**
@@ -93,6 +79,12 @@ export class Model {
    * @param {ModelConfig=} config
    */
   constructor(config = {}) {
+    /** @type {string} */
+    this.name = null;
+    /** @type {string} */
+    this.description = null;
+    this.visualizations = [];
+
     this._graph = new ModelNode();
     this._graph.id = "1";
     this._graph.addChild(new ModelNode());
@@ -154,20 +146,117 @@ export class Model {
     return edge;
   }
 
+  /**
+   * Checks the model for some common errors (e.g syntax errors). The model is not run and runtime errors are not checked.
+   * 
+   * The function returns an array of errors found.
+   * 
+   * @returns {ModelError[]}
+   */
+  check() {
+    let simulate = new Simulator();
+    let errors = [];
+
+
+    /**
+     * @param {Primitive} p 
+     * @param {string} eq 
+     * @returns 
+     */
+    function equationCheck(p, eq) {
+      let tree;
+      // check for syntax errors
+      try {
+        tree = createTree(eq, "_", simulate);
+      } catch (e) {
+        e.primitive = p;
+        errors.push(e);
+        return;
+      }
+
+      // check that we have all the primitives connected
+      let neighbors = p.neighbors();
+      let flaggedMissing = new Set();
+      try {
+        // @ts-ignore
+        trimTree(tree, {
+          get: (name) => {
+            if (!flaggedMissing.has(name)) {
+              if (!neighbors.find(x => x.item.name.toLowerCase() === name.toLowerCase())) {
+                flaggedMissing.add(name.toLowerCase());
+                errors.push(new ModelError("Attempted to reference [" + name + "] but it was not linked.", {
+                  primitive: p,
+                  code: 9912,
+                  details: name
+                }));
+              }
+            }
+            return null;
+          }
+        }, simulate);
+      } catch (e) {
+        return e;
+      }
+
+      return null;
+    }
+
+
+
+    let stocks = this.findStocks();
+    for (let stock of stocks) {
+      equationCheck(stock, stock.initial);
+    }
+
+    let flows = this.findFlows();
+    for (let flow of flows) {
+      equationCheck(flow, flow.rate);
+    }
+
+    let variables = this.findVariables();
+    for (let variable of variables) {
+      equationCheck(variable, variable.value);
+    }
+
+    let states = this.findStates();
+    for (let state of states) {
+      equationCheck(state, "" + state.startActive);
+    }
+
+    let transitions = this.findTransitions();
+    for (let transition of transitions) {
+      equationCheck(transition, "" + transition.value);
+    }
+
+    let populations = this.findPopulations();
+    for (let population of populations) {
+      equationCheck(population, "" + population.networkFunction);
+
+      equationCheck(population, "" + population.geoPlacementFunction);
+
+      equationCheck(population, "" + population.populationSize);
+
+    }
+
+    return errors;
+  }
+
 
   /**
    * Async simulation mode. Allows for pausing the simulation and adjusting
    * values. Returns a promise that resolves with the results or rejects
    * with an error.
    * 
-   * To enable pausing, set the `timePause` property on the model.
-   * 
    * @param {object} options
-   * @param {function({ results: Results, time: number, setValue: function(Primitive, any) })=} options.onPause - async function that will be awaited prior to simulation resuming, use setValue() to adjust values.
+   * @param {function({ results: Results, time: number, setValue: function(Primitive, any) })=} options.onStep - async function that will be awaited each time step prior to simulation resuming, use setValue() to adjust values.
    * 
-   * @returns {Promise<Results, { error: string, errorCode: number, errorPrimitive: Primitive}|Error>}
+   * @returns {Promise<Results, { error: string, errorCode: number, errorPrimitive: Primitive, errorPrimitiveName: string, errorPrimitiveId: string}|Error>}
    */
-  async simulateAsync(options={}) {
+  async simulateAsync(options = {}) {
+    if ("onPause" in options) {
+      throw new Error("onPause has been replaced by onStep which is called each time step.");
+    }
+
     return new Promise((resolve, reject) => {
       /** @type {import("../Modeler.js").SimulationConfigType} */
       let config = {
@@ -175,7 +264,8 @@ export class Model {
         model: this
       };
 
-      if (options.onPause) {
+      if (options.onStep) {
+        config.pauseEachTimeStep = true;
         config.onPause = async (results) => {
           let items = this.find();
           /** @type {Object<string, string>} */
@@ -185,7 +275,7 @@ export class Model {
           }
 
           try {
-            await options.onPause({
+            await options.onStep({
               results: new Results(results, nameIdMapping),
               time: results.times.at(-1),
               setValue: (primitive, value) => {
@@ -213,11 +303,20 @@ export class Model {
       };
 
       config.onError = (results) => {
-        reject({
+        let ep = results.errorPrimitive ? this.get(p => p.id === results.errorPrimitive.id) : null;
+        let e = {
           error: results.error,
-          errorCode: results.errorCode,
-          errorPrimitive: results.errorPrimitive ? this.get(p => p.id === results.errorPrimitive.id) : null
-        });
+          errorCode: results.errorCode
+        };
+        if (ep) {
+          e.errorPrimitiveName = ep.name;
+          e.errorPrimitiveId = ep.id;
+          Object.defineProperty(e, "errorPrimitive", {
+            value: ep,
+            enumerable: false // so we don't get massive errors
+          });
+        }
+        reject(e);
       };
 
 
@@ -404,19 +503,23 @@ export class Model {
    * @return {Primitive}
    */
   getId(id) {
-    return this.get((item) => item.id === id);
+    return this.get((item) => item.id === id, "getId");
   }
 
 
   /**
    * @param {function(Primitive):boolean} selector
+   * @param {string} fn
    *
    * @return {Primitive}
    */
-  get(selector) {
+  get(selector, fn = "get") {
     let items = this.p(this._graph);
     let found = items.find(x => x.primitive() && selector(x.primitive()));
-    return found ? found.primitive() : null;
+    if (!found) {
+      throw new Error(`No matching primitive found for ${fn}()`);
+    }
+    return found.primitive();
   }
 
   /**
@@ -428,7 +531,11 @@ export class Model {
     let items = this.p(this._graph, "Link");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getLink()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -440,7 +547,11 @@ export class Model {
     let items = this.p(this._graph, "Flow");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getFlow()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -452,7 +563,11 @@ export class Model {
     let items = this.p(this._graph, "Transition");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getTransition()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -464,7 +579,11 @@ export class Model {
     let items = this.p(this._graph, "Stock");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getStock()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -476,7 +595,11 @@ export class Model {
     let items = this.p(this._graph, "Variable");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getVariable()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -488,7 +611,11 @@ export class Model {
     let items = this.p(this._graph, "Converter");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getConverter()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -500,7 +627,11 @@ export class Model {
     let items = this.p(this._graph, "State");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getState()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -512,7 +643,11 @@ export class Model {
     let items = this.p(this._graph, "Action");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getAction()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -524,7 +659,11 @@ export class Model {
     let items = this.p(this._graph, "Agents");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getPopulation()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -536,7 +675,11 @@ export class Model {
     let items = this.p(this._graph, "Folder").filter(x => x.getAttribute("Type") !== "Agent");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getFolder()");
+    }
+    return found.primitive();
   }
 
   /**
@@ -548,7 +691,11 @@ export class Model {
     let items = this.p(this._graph, "Folder").filter(x => x.getAttribute("Type") === "Agent");
 
     let found = items.find(x => selector(x.primitive()));
-    return found ? found.primitive() : null;
+
+    if (!found) {
+      throw new Error("No matching primitive found for getAgent()");
+    }
+    return found.primitive();
   }
 
 

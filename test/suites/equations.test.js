@@ -352,8 +352,12 @@ test("Misc", () => {
   check("log(0.1)", -1);
   failure("log()");
   failure("log({1 cow})");
+  failure("log({1 cow})", /does not accept units/);
   check("sum(flatten(log({100, {10, 1000} })))", 6);
   check("ln(e^5)", 5);
+  check("ln(exp(5))", 5);
+  failure("ln(exp({5 Cows}))", /does not accept units/);
+  failure("ln(exp({5 Cows}))", /Cows/);
   check("factorial(3)", 6);
   failure("factorial()");
   failure("factorial({1 cow})");
@@ -952,6 +956,8 @@ test("Vector aggregation", () => {
   check("3:-.5:1", [3, 2.5, 2, 1.5, 1]);
   check("(2+1):1", [3, 2, 1]);
   check("3:1.5", [3, 2]);
+  failure("1:-1:3");
+  failure("10:1:3");
   check("{1 meter}:{2 meters}=={{1 meter}, {2 meters}}", [true, true]);
   failure("{1 meter}:{2 cow}");
 
@@ -1165,7 +1171,7 @@ test("Misc functions", () => {
   check("try\n  catch err\n 3\n end try", 0);
   check("try\n 1\n throw 'oops!'\n 2\n catch err\n 3\n end try", 3);
   check("try\n 1\n throw 'oops!'\n 2\n catch err\n \n end try", 0);
-  check("try\n 1\n throw 'oops!'\n 2\n catch err\n err+'b'\n end try", "oops!b");
+  check("try\n 1\n throw 'oops!'\n 2\n catch err\n err+' b'\n end try", "oops! b");
 
   testConfig.globals = "";
 });

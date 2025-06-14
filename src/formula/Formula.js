@@ -92,6 +92,32 @@ export let VectorObject = {};
 
 
 
+/**
+ * Returns a snippet of the input string around the error position. E.g. "...bc xy..."
+ * 
+ * @param {string} input 
+ * @param {number} line 
+ * @param {number} column 
+ * @returns 
+ */
+function getErrorSnippet(input, line, column) {
+  const PADDING_CHARS = 4;
+
+  const lines = input.split("\n");
+
+  if (line < 1 || line > lines.length) {
+    return null
+  }
+
+  const errorLine = lines[line - 1];
+  const start = Math.max(0, column - PADDING_CHARS);
+  const end = Math.min(errorLine.length, column + PADDING_CHARS);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < errorLine.length ? "..." : "";
+
+  return prefix + errorLine.substring(start, end) + suffix;
+}
+
 
 
 /**
@@ -105,14 +131,22 @@ export function createTree(input, source, simulate) {
     line: 1,
     source
   };
-
-  const chars = new antlr.InputStream(input.replace(/\\n/g, "\n"));
+  input = input.replace(/\\n/g, "\n");
+  const chars = new antlr.InputStream(input);
   const lexer = new FormulaLexer(chars);
   lexer.removeErrorListeners();
   lexer.addErrorListener({
     syntaxError: (recognizer, offendingSymbol, line, column, msg, err) => {
       simulate.evaluatingPosition.line = line;
-      throw new ModelError("Invalid equation syntax", {
+      let snippet = getErrorSnippet(input, line, column);
+
+      if (snippet !== null) {
+        snippet = ` at "${snippet}"`;
+      } else {
+        snippet = '';
+      }
+
+      throw new ModelError(`Invalid equation syntax${snippet}`, {
         code: 9000
       });
     }
@@ -127,7 +161,7 @@ export function createTree(input, source, simulate) {
   parser.addErrorListener({
     syntaxError: (recognizer, offendingSymbol, line, column, msg, err) => {
       simulate.evaluatingPosition.line = line;
-      throw new ModelError("Invalid equation syntax", {
+      throw new ModelError(`Invalid equation syntax at "${getErrorSnippet(input, line, column)}"`, {
         code: 9000
       });
     },
@@ -2485,6 +2519,12 @@ funcEvalMap["RANGE"] = function (node, scope, simulate) {
   if (eq(start, end)) {
     // pass
   } else if (lessThan(start, end)) {
+    if (step.value <= 0) {
+      throw new ModelError(`Step size must be positive to range from ${start} to ${end}, got ${step.value}`, {
+        code: 7046
+      });
+    }
+
     let it = plus(start, step);
     while (lessThanEq(it, end)) {
       vals.push(it);
@@ -2493,7 +2533,14 @@ funcEvalMap["RANGE"] = function (node, scope, simulate) {
   } else if (greaterThan(start, end)) {
     if (node.children.length === 2) {
       step = negate(step);
+    } else {
+      if (step.value >= 0) {
+        throw new ModelError(`Step size must be negative to range from ${start} to ${end}, got ${step.value}`, {
+          code: 7046
+        });
+      }
     }
+
     let it = plus(start, step);
     while (greaterThanEq(it, end)) {
       vals.push(it);

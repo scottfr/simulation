@@ -324,7 +324,7 @@ pastMean([x], df)
 
 
 test("Cannot use state functions outside primitive", () => {
-  let m  = new Model();
+  let m = new Model();
   m.Variable({
     value: "x()"
   });
@@ -439,7 +439,7 @@ it("Invalid flow vectors", () => {
     value: "2"
   });
 
-  
+
   try {
     m.simulate();
     // should never happen
@@ -494,7 +494,7 @@ it("Invalid converter source", () => {
 });
 
 
-test("Invalid name", () => {
+test("Invalid name and syntax", () => {
   let m = new Model();
   let x = m.Variable({
     name: "[[f] [z]]",
@@ -508,10 +508,14 @@ test("Invalid name", () => {
 
   m.Link(x, y);
 
-  expect(() => m.simulate()).toThrow(/Invalid equation syntax/);
+  expect(() => m.simulate()).toThrow(/Invalid equation syntax at "\[\[f\]..."/);
 
   y.value = "[]";
-  expect(() => m.simulate()).toThrow(/Invalid equation syntax/);
+  expect(() => m.simulate()).toThrow(/Invalid equation syntax at "\[\]"/);
+
+
+  y.value = "abcdef xyz123";
+  expect(() => m.simulate()).toThrow(/Invalid equation syntax at "...def xyz1..."/);
 });
 
 
@@ -584,7 +588,7 @@ test("Ambiguous primitive names", () => {
     name: "x",
     value: "1"
   });
-  let x2= m.Variable({
+  let x2 = m.Variable({
     name: "x",
     value: "2"
   });
@@ -620,20 +624,35 @@ test("Units mismatch", () => {
 
   y.value = "1 + {1 meter}";
   expect(() => m.simulate()).toThrow("Consider replacing 1 with {1 meter}");
+  expect(() => m.simulate()).toThrow("Attempted addition: 1 + {1 meter}");
 
   y.value = "{1 meter} + 2";
   expect(() => m.simulate()).toThrow("Consider replacing 2 with {2 meter}");
+  expect(() => m.simulate()).toThrow("Attempted addition: {1 meter} + 2");
+
+
+  y.value = "{1 meter} < 2";
+  expect(() => m.simulate()).toThrow("Consider replacing 2 with {2 meter}");
+  expect(() => m.simulate()).toThrow("Attempted comparison: {1 meter} < 2");
+
+
+  y.value = "{1 meter} > 2";
+  expect(() => m.simulate()).toThrow("Consider replacing 2 with {2 meter}");
+  expect(() => m.simulate()).toThrow("Attempted comparison: {1 meter} > 2");
+
 
 
   // suggestion is shown when it's a primitive
 
   y.value = "[x] + {1 meter}";
   expect(() => m.simulate()).toThrow("Consider setting the units of [x] to meter.");
+  expect(() => m.simulate()).toThrow("Attempted addition: 1 + {1 meter}");
 
   y.value = "{1 meter} + [x]";
   expect(() => m.simulate()).toThrow("Consider setting the units of [x] to meter.");
+  expect(() => m.simulate()).toThrow("Attempted addition: {1 meter} + 1");
 
-  
+
   // suggestion is not shown when it is a function
 
   y.value = "seconds() + {1 meter}";
@@ -644,4 +663,98 @@ test("Units mismatch", () => {
   } catch (err) {
     expect(err.message).not.toContain("Consider");
   }
+});
+
+
+
+
+test("Model Check", () => {
+  let m = new Model();
+  m.timeLength = 100;
+
+  let v1 = m.Variable({
+    name: "v1",
+    value: "100"
+  });
+
+  let v2 = m.Variable({
+    name: "v2",
+    value: "100 + 200"
+  });
+
+  let errors = m.check();
+
+  expect(errors).toHaveLength(0);
+
+
+  // syntax error
+
+  v2.value = "100 ' 200";
+
+  errors = m.check();
+
+  expect(errors).toHaveLength(1);
+  expect(errors[0].primitive).toBe(v2);
+
+
+  v1.value = "1/";
+
+  errors = m.check();
+  expect(errors).toHaveLength(2);
+
+
+  // missing connection
+
+  v1.value = "100";
+  v2.value = "100 + [v1]";
+
+  errors = m.check();
+  expect(errors).toHaveLength(1);
+  expect(errors[0].primitive).toBe(v2);
+  expect(errors[0].details).toBe("v1");
+
+
+  // don't double count the same item
+
+  v2.value = "100 + [v1] + [V1]";
+
+  errors = m.check();
+  expect(errors).toHaveLength(1);
+  expect(errors[0].primitive).toBe(v2);
+
+
+
+  v2.value = "100 + [v1] + [x] + [z]";
+
+  errors = m.check();
+  expect(errors).toHaveLength(3);
+  expect(errors[0].primitive).toBe(v2);
+  expect(errors[0].message).toMatch("[v1]");
+  expect(errors[1].primitive).toBe(v2);
+  expect(errors[1].message).toMatch("[x]");
+  expect(errors[2].primitive).toBe(v2);
+  expect(errors[2].message).toMatch("[z]");
+
+  v2.value = "100 + [v1]";
+
+  errors = m.check();
+  expect(errors).toHaveLength(1);
+
+
+
+  m.Link(v1, v2);
+  errors = m.check();
+  expect(errors).toHaveLength(0);
+
+
+  // case-insensitive check
+
+  v2.value = "100 + [V1]";
+  errors = m.check();
+  expect(errors).toHaveLength(0);
+
+  v2.value = "100 + [v1]";
+  v1.name = "V1";
+  errors = m.check();
+  expect(errors).toHaveLength(0);
 });

@@ -439,14 +439,6 @@ export class SPrimitive {
    * @param {Map} neighborhood 
    */
   setEquation(tree, neighborhood) {
-    if (this instanceof SFlow || this instanceof STransition) {
-      if (this.omega !== null) {
-        neighborhood.set("omega", this.omega);
-      }
-      if (this.alpha !== null) {
-        neighborhood.set("alpha", this.alpha);
-      }
-    }
 
     try {
       this.equation = trimTree(tree, neighborhood, this.simulate);
@@ -514,7 +506,7 @@ export class SState extends SPrimitive {
   }
 
   /**
-   * @param {Material} value
+   * @param {Material|Vector} value
    */
   setValue(value) {
     this.setActive(trueValue(value));
@@ -1476,7 +1468,7 @@ export class SStock extends SPrimitive {
   }
 
   /**
-   * @param {Material} value
+   * @param {Material|Vector} value
    */
   setValue(value) {
     this.level = value;

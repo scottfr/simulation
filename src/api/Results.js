@@ -71,6 +71,10 @@ export class Results {
    * @param {number=} time - if omitted, the last available value
    */
   value(primitive, time = null) {
+    if (!primitive?._node) {
+      throw new Error("Expected a primitive when calling Results.value(), got: " + primitive);
+    }
+
     let series = this.series(primitive);
     if (time === null) {
       return series[series.length - 1];
