@@ -1144,8 +1144,8 @@ export class Container extends Primitive {
   }
 
   /**
-   * @param {Stock} start
-   * @param {Stock} end
+   * @param {Stock | null} start
+   * @param {Stock | null} end
    * @param {(PrimitiveConfig & ValuedConfig & FlowConfig)=} config
    */
   Flow(start, end, config = {}) {
