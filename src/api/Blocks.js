@@ -1166,8 +1166,8 @@ export class Container extends Primitive {
   }
 
   /**
-   * @param {Primitive} start
-   * @param {Primitive} end
+   * @param {Primitive | null} start
+   * @param {Primitive | null} end
    * @param {(PrimitiveConfig & LinkConfig)=} config
    */
   Link(start, end, config = {}) {
