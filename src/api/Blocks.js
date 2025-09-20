@@ -1155,8 +1155,8 @@ export class Container extends Primitive {
   }
 
   /**
-   * @param {State} start
-   * @param {State} end
+   * @param {State | null} start
+   * @param {State | null} end
    * @param {(PrimitiveConfig & TransitionConfig)=} config
    */
   Transition(start, end, config = {}) {
