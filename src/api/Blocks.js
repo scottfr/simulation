@@ -1144,8 +1144,8 @@ export class Container extends Primitive {
   }
 
   /**
-   * @param {Stock} start
-   * @param {Stock} end
+   * @param {Stock | null} start
+   * @param {Stock | null} end
    * @param {(PrimitiveConfig & ValuedConfig & FlowConfig)=} config
    */
   Flow(start, end, config = {}) {
@@ -1155,8 +1155,8 @@ export class Container extends Primitive {
   }
 
   /**
-   * @param {State} start
-   * @param {State} end
+   * @param {State | null} start
+   * @param {State | null} end
    * @param {(PrimitiveConfig & TransitionConfig)=} config
    */
   Transition(start, end, config = {}) {
@@ -1166,8 +1166,8 @@ export class Container extends Primitive {
   }
 
   /**
-   * @param {Primitive} start
-   * @param {Primitive} end
+   * @param {Primitive | null} start
+   * @param {Primitive | null} end
    * @param {(PrimitiveConfig & LinkConfig)=} config
    */
   Link(start, end, config = {}) {
