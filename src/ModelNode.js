@@ -1,5 +1,5 @@
 // eslint-disable-next-line
-import { Stock, Variable, State, Action, Population, Transition, Flow, Link, Folder, Agent, Converter, Primitive } from "./api/Blocks.js";
+import { Stock, Variable, State, Action, Population, Transition, Flow, Link, Folder, Agent, Converter, Ghost, Primitive } from "./api/Blocks.js";
 
 
 export function modelNodeClone(node, parent) {
@@ -83,6 +83,8 @@ export class ModelNode {
         this._primitive = new Variable(this, config);
       } else if (this.value.nodeName === "Converter") {
         this._primitive = new Converter(this, config);
+      } else if (this.value.nodeName === "Ghost") {
+        this._primitive = new Ghost(this, config);
       } else if (this.value.nodeName === "State") {
         this._primitive = new State(this, config);
       } else if (this.value.nodeName === "Action") {

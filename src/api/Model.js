@@ -2,7 +2,7 @@ import { ModelNode, modelNodeClone, primitives } from "../ModelNode.js";
 import { runSimulation } from "../Modeler.js";
 import { nodeBase } from "../Constants.js";
 // eslint-disable-next-line
-import { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder } from "./Blocks.js";
+import { Primitive, Stock, Variable, Converter, Ghost, State, Action, Population, Flow, Transition, Link, Agent, Folder } from "./Blocks.js";
 import { Results } from "./Results.js";
 import { SimulationError } from "./SimulationError.js";
 import { createModelJSON, loadModelJSON } from "./import_export/ModelJSON/ModelJSON.js";
@@ -392,6 +392,17 @@ export class Model {
   }
 
   /**
+   * @param {import("./Blocks.js").PrimitiveConfig & import("./Blocks.js").ValuedConfig & import("./Blocks.js").GhostConfig} config
+   *
+   * @return {Ghost}
+   */
+  Ghost(config = {}) {
+    let ghost = /** @type {Ghost} */ (this._createNode("ghost").primitive(this, excludeKeys(config, [])));
+    ghost.model = this;
+    return ghost;
+  }
+
+  /**
    * @param {import("./Blocks.js").PrimitiveConfig & import("./Blocks.js").StateConfig} config
    *
    * @return {State}
@@ -775,6 +786,17 @@ export class Model {
 
     return items.filter(x => selector(x.primitive())).map(x => x.primitive());
   }
+
+  /**
+   * @param {function(Ghost):boolean=} selector
+   *
+   * @return {Ghost[]}
+   */
+    findGhosts(selector = (() => true)) {
+      let items = this.p(this._graph, "Ghost");
+
+      return items.filter(x => selector(x.primitive())).map(x => x.primitive());
+    }
 
   /**
    * @param {function(State):boolean=} selector
