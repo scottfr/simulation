@@ -160,6 +160,15 @@ export function checkErr(err, config, simulate) {
   }
 }
 
+/**
+ * @param {{ [x: string]: SubModelType } | undefined} submodels
+ *
+ * @returns {SAgent[]}
+ */
+function mergeSubmodelAgents(submodels) {
+  if (!submodels) return []
+  return Object.values(submodels).flatMap(submodel => submodel.agents)
+}
 
 /**
  * @param {import("./Simulator").Simulator} simulate
@@ -550,10 +559,12 @@ function innerRunSimulation(simulate, config) {
       }
     }
 
+    const allAgents = mergeSubmodelAgents(model.submodels)
+
     for (let submodel in model.submodels) {
       if (submodel !== "base") {
         try {
-          buildNetwork(model.submodels[submodel], simulate);
+          buildNetwork({ ...model.submodels[submodel], agents: allAgents }, simulate);
         } catch (err) {
           let msg = "An error with the custom network function prevented the simulation from running.";
           if (err instanceof ModelError) {
@@ -569,7 +580,7 @@ function innerRunSimulation(simulate, config) {
 
 
         try {
-          buildPlacements(model.submodels[submodel], simulate);
+          buildPlacements({ ...model.submodels[submodel], agents: allAgents }, simulate);
         } catch (err) {
           let msg = "An error with the agent placement function prevented the simulation from running.";
           if (err instanceof ModelError) {
