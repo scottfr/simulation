@@ -150,5 +150,38 @@
                 "S"
             ]
         }
+    ],
+    "scenarios": [
+        {
+            "name": "Baseline",
+            "values": {
+                "S": 100,
+                "I": 3,
+                "R": 0,
+                "β": 0.01,
+                "γ": 0.3
+            }
+        },
+        {
+            "name": "High Transmission",
+            "values": {
+                "S": 100,
+                "I": 3,
+                "R": 0,
+                "β": 0.02,
+                "γ": 0.3
+            }
+        },
+        {
+            "name": "Mitigation",
+            "description": "Reduced transmission rate.",
+            "values": {
+                "S": 100,
+                "I": 3,
+                "R": 0,
+                "β": 0.005,
+                "γ": 0.3
+            }
+        }
     ]
 }

@@ -96,11 +96,16 @@ export function RandNormal(simulate, mu = null, sigma = null) {
     sigma = 1;
   }
 
-  isNormalNumber(mu, "RandNormal", "mu");
-  isNormalNumber(sigma, "RandNormal", "sigma");
+  isNormalNumber(mu, "RandNormal", "mean");
+  isNormalNumber(sigma, "RandNormal", "standard deviation");
+  if (sigma < 0) {
+    throw new ModelError(`<i>Standard deviation</i> for RandNormal() must be greater than or equal to 0; got ${sigma}.`, {
+      code: 4023
+    });
+  }
 
 
-  let z = Math.sqrt(-2 * Math.log(1 - Rand(simulate))) * Math.cos(Rand(simulate) * 2 * Math.PI);
+  let z = Math.sqrt(-2 * Math.log1p(-Rand(simulate))) * Math.cos(Rand(simulate) * 2 * Math.PI);
   return z * sigma + mu;
 }
 
@@ -141,19 +146,20 @@ export function RandLognormal(simulate, mu, sigma) {
 
 
   if (mu <= 0) {
-    throw new ModelError(`<i>Mu</i> for RandLognormal() must be greater than 0; got ${mu}.`, {
+    throw new ModelError(`<i>Mean</i> for RandLognormal() must be greater than 0; got ${mu}.`, {
       code: 4001
     });
   }
   if (sigma <= 0) {
-    throw new ModelError(`<i>Sigma</i> for RandLognormal() must be greater than 0; got ${sigma}.`, {
+    throw new ModelError(`<i>Standard deviation</i> for RandLognormal() must be greater than 0; got ${sigma}.`, {
       code: 4002
     });
   }
 
+  const z = Math.log1p(Math.pow(sigma / mu, 2));
 
-  let lmu = Math.log(mu) - 0.5 * Math.log(1 + Math.pow(sigma / mu, 2));
-  let lsigma = Math.sqrt(Math.log(1 + Math.pow(sigma / mu, 2)));
+  let lmu = Math.log(mu) - 0.5 * z;
+  let lsigma = Math.sqrt(z);
 
   return Math.exp(RandNormal(simulate, lmu, lsigma));
 }
@@ -232,7 +238,7 @@ function randomBinomialBtpe(simulate, n, p) {
   p4 = p3 + c / lamr;
 
 
-  // eslint-disable-next-line
+
   while (true) {
     nrq = n * r * q;
     u = Rand(simulate) * p4;
@@ -337,7 +343,7 @@ function randomBinomialInversion(simulate, n, p) {
   let X, bound;
 
   q = 1.0 - p;
-  qn = Math.exp(n * Math.log(q));
+  qn = Math.exp(n * Math.log1p(-p));
   np = n * p;
   bound = Math.min(n, np + 10.0 * Math.sqrt(np * q + 1));
 
@@ -372,6 +378,11 @@ export function RandNegativeBinomial(simulate, successes, probability) {
   if (successes < 0) {
     throw new ModelError(`<i>Successes</i> for RandNegativeBinomial() must be greater than or equal to 0; got ${successes}.`, {
       code: 4005
+    });
+  }
+  if (!Number.isInteger(successes)) {
+    throw new ModelError(`<i>Successes</i> for RandNegativeBinomial() must be an integer; got ${successes}.`, {
+      code: 4025
     });
   }
   if (probability < 0 || probability > 1) {
@@ -428,7 +439,7 @@ export function RandPoisson(simulate, lambda) {
     let L = Math.exp(-lambda);
     let k = 0;
     let p = 1;
-    // eslint-disable-next-line
+
     while (true) {
       k = k + 1;
       p = p * Rand(simulate);
@@ -445,7 +456,7 @@ export function RandPoisson(simulate, lambda) {
     let alpha = beta * lambda;
     let k = Math.log(c) - lambda - Math.log(beta);
 
-    // eslint-disable-next-line
+
     while (true) {
       let u = Rand(simulate);
       let x = (alpha - Math.log((1.0 - u) / u)) / beta;
@@ -491,7 +502,7 @@ export function RandGamma(simulate, alpha, beta) {
   function gammaShapeGe1(a) {
     const d = a - 1 / 3;
     const c = 1 / Math.sqrt(9 * d);
-    // eslint-disable-next-line
+
     while (true) {
       const z = RandNormal(simulate, 0, 1);
       if (!Number.isFinite(z)) continue;
@@ -574,6 +585,12 @@ export function RandTriangular(simulate, minimum, maximum, peak) {
     });
   }
 
+  if (a > b) {
+    throw new ModelError("Maximum must be greater than the minimum for the triangular distribution.", {
+      code: 4012
+    });
+  }
+
   if (c < a || c > b) {
     throw new ModelError("The peak must be within the maximum and minimum for the triangular distribution.", {
       code: 4013
@@ -616,6 +633,11 @@ export function RandDist(simulate, x, y) {
     if (y[i] < 0) {
       throw new ModelError("The y values of RandDist cannot be negative.", {
         code: 4016
+      });
+    }
+    if (i > 0 && x[i] < x[i - 1]) {
+      throw new ModelError("The x values of RandDist must not decrease.", {
+        code: 4022
       });
     }
   }

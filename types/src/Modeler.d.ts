@@ -38,14 +38,14 @@
  *
  * @returns
  */
-export function runSimulation(config: SimulationConfigType): import("./Simulator.js").ResultsType;
+export function runSimulation(config: SimulationConfigType): import("./Simulator.js").ResultsType | undefined;
 /**
  * @param {*} err
  * @param {*} config
  * @param {import("./Simulator").Simulator} simulate
  * @returns
  */
-export function checkErr(err: any, config: any, simulate: import("./Simulator").Simulator): import("./Simulator.js").ResultsType;
+export function checkErr(err: any, config: any, simulate: import("./Simulator").Simulator): import("./Simulator.js").ResultsType | undefined;
 /**
  * @param {any} x
  * @param {boolean=} removeVectors - if true, Vectors will be converted to basic types
@@ -74,7 +74,7 @@ export function createUnitStore(u: string, simulate: import("./Simulator").Simul
  * @param {Map=} nodeBase
  * @param {object=} tree
  */
-export function simpleEquation(eq: string, simulate: import("./Simulator").Simulator, scope?: Map | undefined, nodeBase?: Map | undefined, tree?: object | undefined): any;
+export function simpleEquation(eq: string, simulate: import("./Simulator").Simulator, scope?: Map<any, any> | undefined, nodeBase?: Map<any, any> | undefined, tree?: object | undefined): any;
 /**
  * @template {Material|Vector} T
  * @param {T} mat
@@ -129,7 +129,7 @@ export function getPrimitiveNeighborhood(primitive: import("./Primitives").SPrim
  */
 export function updateDisplayed(solver: import("./Simulator").SolverType, simulate: import("./Simulator").Simulator): void;
 export function validateAgentLocation(location: any, primitive: any): void;
-export const DUPLICATE_PRIMITIVE_NAMES: any;
+export const DUPLICATE_PRIMITIVE_NAMES: unique symbol;
 export type GraphNode = import("./SharedTypes.js").GraphNode;
 export type SubModelType = SPopulation & {
     node?: import("./api/Blocks").Primitive;

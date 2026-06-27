@@ -13,32 +13,15 @@ export function makeObjectBase(x: any, simulate: import("../Simulator").Simulato
     delayEvalParams: any;
 }>;
 /**
- * @typedef {Object} DefineFunctionParam
- * @property {string} name
- * @property {any=} defaultVal
- * @property {boolean=} noUnits
- * @property {boolean=} noVector
- * @property {boolean=} needVector
- * @property {boolean=} needNum
- * @property {boolean=} leafNeedNum
- * @property {boolean=} vectorize
- * @property {boolean=} allowBoolean
- * @property {boolean=} allowString
- * @property {boolean=} needString
- * @property {boolean=} needPrimitive
- * @property {boolean=} allowOptionalPrimitive
- * @property {boolean=} needAgent
- * @property {boolean=} needAgents
- * @property {boolean=} needPopulation
+ * @param {string} name
+ * @param {DefineFunctionDefinition} definition
  */
-/**
- * @callback DefineFunctionPrep
- * @param {any[]} args
- * @returns {any}
- */
-/**
- * @typedef {{ param: DefineFunctionParam, allowEmpty?: boolean, prep?: DefineFunctionPrep, object?: any }|{ params: DefineFunctionParam[], recurse?: boolean, prep?: DefineFunctionPrep, object?: any }} DefineFunctionDefinition
- */
+export function setFunctionDef(name: string, definition: DefineFunctionDefinition): {
+    name: string;
+    standardFnName: string;
+    objectFnName: string;
+    definition: DefineFunctionDefinition;
+};
 /**
  * @param {import("../Simulator").Simulator} simulate
  * @param {string} name
@@ -47,6 +30,13 @@ export function makeObjectBase(x: any, simulate: import("../Simulator").Simulato
  */
 export function defineFunction(simulate: import("../Simulator").Simulator, name: string, definition: DefineFunctionDefinition, fn: Function): void;
 export function testArgumentsSize(x: any, name: any, min: any, max: any): void;
+export namespace functionDefs {
+    let topLevel: FunctionDefItem;
+    let string: FunctionDefItem;
+    let vector: FunctionDefItem;
+    let primitive: FunctionDefItem;
+    let agent: FunctionDefItem;
+}
 export type DefineFunctionParam = {
     name: string;
     defaultVal?: any | undefined;
@@ -64,6 +54,14 @@ export type DefineFunctionParam = {
     needAgent?: boolean | undefined;
     needAgents?: boolean | undefined;
     needPopulation?: boolean | undefined;
+    implicitFunction?: boolean | undefined;
+    injectedVariables?: {
+        name: string;
+    }[] | undefined;
+    /**
+     * - don't show defaultVal in function signature, don't show the parameter at all unless the user specifies it
+     */
+    silentDefault?: boolean | undefined;
 };
 export type DefineFunctionPrep = (args: any[]) => any;
 export type DefineFunctionDefinition = {
@@ -71,10 +69,18 @@ export type DefineFunctionDefinition = {
     allowEmpty?: boolean;
     prep?: DefineFunctionPrep;
     object?: any;
+    complete?: boolean;
 } | {
     params: DefineFunctionParam[];
     recurse?: boolean;
     prep?: DefineFunctionPrep;
     object?: any;
+    complete?: boolean;
 };
+export type FunctionDefItem = Map<string, {
+    name: string;
+    standardFnName: string;
+    objectFnName: string;
+    definition: DefineFunctionDefinition;
+}>;
 import { Vector } from "./Vector.js";

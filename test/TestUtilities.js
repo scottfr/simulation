@@ -78,7 +78,7 @@ export function check(eqn, out, decimals = null) {
 
 /**
  * @param {string} eqn
- * @param {string=} errorMsg
+ * @param {string|RegExp} errorMsg
  */
 export function failure(eqn, errorMsg = null) {
   let m = new Model();

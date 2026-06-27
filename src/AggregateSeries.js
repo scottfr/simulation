@@ -34,7 +34,7 @@ export class AggregateSeries {
 
     while (this.oldValues.length - 1 < index) {
       let value = evaluateNode(data.node, data.scope, this.simulate);
-      
+
       // ensure things like primitives or functions are converted to values
       this.oldValues.push(toNum(value));
     }

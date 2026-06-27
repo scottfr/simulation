@@ -354,6 +354,69 @@ pastMean([x], df)
 });
 
 
+test("Past functions reject string histories", () => {
+  let m = new Model();
+
+  let x = m.Variable({
+    name: "x",
+    value: "\"foo\""
+  });
+
+  let y = m.Variable({
+    name: "y",
+    value: "PastMean([x])"
+  });
+
+  m.Link(x, y);
+
+  y.value = "PastMean([x])";
+  expect(() => m.simulate()).toThrow(/does not accept string values/);
+
+  y.value = "PastMedian([x])";
+  expect(() => m.simulate()).toThrow(/Cannot use Strings in logical inequality comparisons/);
+
+  y.value = "PastStdDev([x])";
+  expect(() => m.simulate()).toThrow(/does not accept string values/);
+
+  y.value = "PastMax([x])";
+  expect(() => m.simulate()).toThrow(/Cannot use Strings in logical inequality comparisons/);
+
+  y.value = "PastMin([x])";
+  expect(() => m.simulate()).toThrow(/Cannot use Strings in logical inequality comparisons/);
+
+  y.value = "PastCorrelation([x], [x])";
+  expect(() => m.simulate()).toThrow(/does not accept string values/);
+});
+
+
+test("Delay rejects interpolating string values", () => {
+  let m = new Model({
+    algorithm: "Euler"
+  });
+
+  let x = m.Variable({
+    name: "x",
+    value: "IfThenElse(Time() < {1 Years}, \"foo\", \"bar\")"
+  });
+
+  let y = m.Variable({
+    name: "y",
+    value: "Delay([x], 0.5)"
+  });
+
+  m.Link(x, y);
+
+  expect(() => m.simulate()).toThrow(/Cannot convert Strings to Numbers/);
+
+  // numbers work
+  x.value = "IfThenElse(Time() < {1 Years}, 1, 2)";
+  let res = m.simulate();
+  expect(res.value(y, 0)).toBe(1);
+  expect(res.value(y, 1)).toBe(1.5);
+  expect(res.value(y, 3)).toBe(2);
+});
+
+
 test("Cannot use state functions outside primitive", () => {
   let m = new Model();
   m.Variable({
@@ -383,6 +446,26 @@ test("Cannot use state functions outside primitive", () => {
   End Function
   `;
   expect(() => m.simulate()).toThrow(/Delay3\(\) may only/);
+});
+
+
+test("ResetTimer validates action primitive", () => {
+  let m = new Model();
+
+  let v = m.Variable({
+    value: "ResetTimer(1)"
+  });
+
+  expect(() => m.simulate()).toThrow(/requires a primitive/);
+
+  let other = m.Variable({
+    name: "Other",
+    value: "1"
+  });
+  m.Link(other, v);
+
+  v.value = "ResetTimer([Other])";
+  expect(() => m.simulate()).toThrow(/requires an Action primitive/);
 });
 
 
@@ -546,7 +629,7 @@ test("Invalid name and syntax", () => {
 
 
   y.value = "abcdef xyz123";
-  expect(() => m.simulate()).toThrow(/Invalid equation syntax at "...def xyz1..."/);
+  expect(() => m.simulate()).toThrow(/Invalid equation syntax at "...cdef xyz..."/);
 });
 
 
@@ -561,6 +644,57 @@ test("Smooth errors due to wrong number of parameters", () => {
   v.value = "delay1(10, 11, 12, 14, 15)";
   expect(() => m.simulate()).toThrow(/Wrong number/);
   expect(() => m.simulate()).toThrow(/delay1/);
+});
+
+
+test("Smooth wrong-arity errors preserve source on parse cache hits", () => {
+  let m = new Model();
+  let v = m.Variable({
+    value: "smooth(10)"
+  });
+
+  function simulateError() {
+    try {
+      m.simulate();
+      // should never happen
+      expect(false).toBe(true);
+    } catch (err) {
+      return err;
+    }
+  }
+
+  let firstError = simulateError();
+  expect(firstError.primitive).toBe(v);
+  expect(firstError.source).toBe("PRIMITIVE:VALUE");
+  expect(firstError.line).toBe(1);
+  expect(firstError.message).toContain("Wrong number of parameters for smooth().");
+
+  let cacheHitError = simulateError();
+  expect(cacheHitError.primitive).toBe(v);
+  expect(cacheHitError.source).toBe("PRIMITIVE:VALUE");
+  expect(cacheHitError.line).toBe(1);
+  expect(cacheHitError.message).toContain("Wrong number of parameters for smooth().");
+});
+
+
+test("Smooth wrong-arity errors use macro call line", () => {
+  let m = new Model();
+  let v = m.Variable({
+    value: `a<-1
+    b<-2
+    smooth(10)`
+  });
+
+  try {
+    m.simulate();
+    // should never happen
+    expect(false).toBe(true);
+  } catch (err) {
+    expect(err.primitive).toBe(v);
+    expect(err.source).toBe("PRIMITIVE:VALUE");
+    expect(err.line).toBe(3);
+    expect(err.message).toContain("Wrong number of parameters for smooth().");
+  }
 });
 
 

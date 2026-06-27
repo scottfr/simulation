@@ -10,24 +10,24 @@ export function modelNodeClone(node, parent) {
   let obj = new ModelNode();
   obj.value = node.cloneNode(true);
   obj.parent = parent;
-  
-  let currIds = ["1"].concat(primitives(findRootParent(parent)).map(x => x.id).filter(x => !!x));
-  
+
+  let currIds = [1].concat(primitives(findRootParent(parent)).map(x => x.id).filter(x => !!x).map(x => +x));
+
   if (node.attributes.length > 0) {
     for (let j = 0; j < node.attributes.length; j++) {
       let attribute = node.attributes.item(j);
       obj.setAttribute(attribute.nodeName, attribute.nodeValue);
     }
   }
-  
+
   obj.setAttribute("id", "" + (Math.max.apply(null, currIds) + 1));
-  
+
   return obj;
 }
 
 
 
-  
+
 function findRootParent(node) {
   if (node.parent) {
     return findRootParent(node.parent);
@@ -194,13 +194,21 @@ export function primitives(root, type) {
 
 
 function nodeChildren(node) {
-  let children = node.children.slice();
+  const result = [];
 
-  let childrenLength = children.length;
-  for (let i = 0; i < childrenLength; i++) {
-    let child = children[i];
-    children = children.concat(nodeChildren(child));
+  function collect(node) {
+    const children = node.children;
+    const len = children.length;
+
+    for (let i = 0; i < len; i++) {
+      result.push(children[i]);
+    }
+
+    for (let i = 0; i < len; i++) {
+      collect(children[i]);
+    }
   }
 
-  return children;
+  collect(node);
+  return result;
 }

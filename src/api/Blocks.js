@@ -195,30 +195,31 @@ export class Primitive {
     }
 
 
-    neighbors = neighbors.filter(x => !!x);
 
     let res = [];
+    let seen = new Map();
+
 
     // Remove duplicated elements
     for (let i = 0; i < neighbors.length; i++) {
-      if (neighbors[i].linkHidden) {
+      let n = neighbors[i];
+      if (n.linkHidden) {
+
         continue;
       }
-      let found = false;
-      for (let j = 0; j < res.length; j++) {
-        if (res[j].type === neighbors[i].type && res[j].item.id === neighbors[i].item.id) {
-          found = true;
-          if (res[j].linkHidden && !neighbors[i].linkHidden) {
-            res[j].linkHidden = false;
-          }
-          break;
+      let key = n.type + " - " + n.item.id;
+      let existing = seen.get(key);
+      if (existing) {
+        if (existing.linkHidden && !n.linkHidden) {
+          existing.linkHidden = false;
         }
+        continue;
       }
-      if (!found) {
-        if ((neighbors[i].item instanceof ValuedPrimitive) || (neighbors[i].item instanceof Population)) {
-          res.push(neighbors[i]);
-        }
+      if ((n.item instanceof ValuedPrimitive) || (n.item instanceof Population)) {
+        seen.set(key, n);
+        res.push(n);
       }
+
     }
     return res;
 
@@ -532,7 +533,7 @@ export class Converter extends ValuedPrimitive {
     } catch (_err) {
       // the source does not exist, return null;
     }
-    
+
 
     return /** @type {ValuedPrimitive} */ (p);
   }
@@ -1149,8 +1150,8 @@ export class Container extends Primitive {
   }
 
   /**
-   * @param {Stock | null} start
-   * @param {Stock | null} end
+   * @param {Stock|null} start
+   * @param {Stock|null} end
    * @param {(PrimitiveConfig & ValuedConfig & FlowConfig)=} config
    */
   Flow(start, end, config = {}) {
@@ -1160,8 +1161,8 @@ export class Container extends Primitive {
   }
 
   /**
-   * @param {State | null} start
-   * @param {State | null} end
+   * @param {State|null} start
+   * @param {State|null} end
    * @param {(PrimitiveConfig & TransitionConfig)=} config
    */
   Transition(start, end, config = {}) {
@@ -1171,8 +1172,8 @@ export class Container extends Primitive {
   }
 
   /**
-   * @param {Primitive | null} start
-   * @param {Primitive | null} end
+   * @param {Primitive|null} start
+   * @param {Primitive|null} end
    * @param {(PrimitiveConfig & LinkConfig)=} config
    */
   Link(start, end, config = {}) {

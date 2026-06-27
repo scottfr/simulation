@@ -259,7 +259,7 @@ export class Task {
 
   execute() {
     if (this.action && (!this.deadAction) && ((!this.blocker) || !this.queue.states[this.blocker])) {
-      
+
       if (this.queue.debug) {
         console.log("%c Executing: " + this.name + " (Time: " + this.time.value + ")", "color:blue");
       }

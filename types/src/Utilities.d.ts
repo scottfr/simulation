@@ -3,7 +3,7 @@ export function isTrue(item: any): boolean;
  * @param {string} str
  * @returns {string}
  */
-export function toHTML(str: string): string;
+export function sanitizeText(str: string): string;
 /**
  * @param {any} nStr
  * @param {boolean=} sanitize

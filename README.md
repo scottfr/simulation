@@ -14,7 +14,7 @@ Copy this HTML into an *index.html* file and open it in your browser.
 <script type="importmap">
   {
     "imports": {
-      "simulation": "https://unpkg.com/simulation@8.0.0",
+      "simulation": "https://unpkg.com/simulation@9.0.0",
       "chart.js": "https://unpkg.com/chart.js@3.9.1/dist/chart.esm.js"
     }
   }

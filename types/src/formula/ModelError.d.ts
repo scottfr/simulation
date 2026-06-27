@@ -13,10 +13,10 @@ export class ModelError extends Error {
         code: number;
     });
     primitive: any;
-    showEditor: boolean;
-    source: string;
-    line: number;
-    details: string;
+    showEditor: boolean | undefined;
+    source: string | undefined;
+    line: number | undefined;
+    details: string | undefined;
     code: number;
 }
 export type GraphNode = import("../SharedTypes.js").GraphNode;

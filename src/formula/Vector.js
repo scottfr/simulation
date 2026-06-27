@@ -8,7 +8,7 @@ import { selectFromMatrix, strictEquals } from "./Utilities.js";
 
 /**
  * Truncates to max length adding ellipsis if truncated. If text is only 2 or fewer characters longer than maxLength, it will not be truncated.
- * 
+ *
  * @param {string} string
  * @param {number} maxLength
  */
@@ -419,6 +419,23 @@ export class Vector {
     }
     return this;
   }
+
+
+  /**
+   * @param {function} operation
+   */
+  recurseEach(operation) {
+    for (let i = 0; i < this.items.length; i++) {
+      let item = this.items[i];
+      if (item instanceof Vector) {
+        item.recurseEach(operation);
+      } else {
+        operation(this.items[i]);
+      }
+    }
+  }
+
+
 
 
   /**

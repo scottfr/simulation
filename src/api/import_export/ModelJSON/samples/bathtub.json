@@ -113,7 +113,7 @@
                 ]
             },
             "behavior": {
-                "value": "if [Is Filling] then\n  10\nend if",
+                "value": "IfThenElse([Is Filling], 10, 0)",
                 "non_negative": true,
                 "units": "Liters/Minute"
             }
@@ -131,7 +131,7 @@
                 ]
             },
             "behavior": {
-                "value": "if [Is Draining] then\n  {0.2 1/Minute} * [Bathtub]\nend if",
+                "value": "IfThenElse([Is Draining], {0.2 1/Minute} * [Bathtub], 0)",
                 "non_negative": true,
                 "units": "Liters/Minute"
             }

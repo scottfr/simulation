@@ -1,5 +1,5 @@
 import { mult, minus, eq, greaterThanEq, lessThanEq, plus, div, evaluateNode, lessThan, greaterThan, negate, VectorObject, toNum } from "./formula/Formula.js";
-import { defineFunction, makeObjectBase, testArgumentsSize } from "./formula/CalcFunctions.js";
+import { defineFunction, makeObjectBase, setFunctionDef, testArgumentsSize } from "./formula/CalcFunctions.js";
 import { Material } from "./formula/Material.js";
 import { ModelError } from "./formula/ModelError.js";
 import { convertUnits } from "./formula/Units.js";
@@ -22,9 +22,21 @@ import { State } from "./api/Blocks.js";
  * @param {import("./Simulator").Simulator} simulate
  */
 export function createFunctions(simulate) {
-  let AgentObject = {};
+  let AgentObject = Object.create(null);
+  Object.defineProperty(AgentObject, "_object_type", {
+    value: "agent",
+    enumerable: false,
+    configurable: false,
+    writable: false
+  });
 
-  let PrimitiveObject = {};
+  let PrimitiveObject = Object.create(null);
+  Object.defineProperty(PrimitiveObject, "_object_type", {
+    value: "primitive",
+    enumerable: false,
+    configurable: false,
+    writable: false
+  });
 
   defineFunction(simulate, "Stop", { params: [] }, () => {
     if (simulate.config.showNotification) {
@@ -62,7 +74,7 @@ export function createFunctions(simulate) {
     return simulate.timeEnd.fullClone();
   });
 
-  defineFunction(simulate, "Seconds", { params: [{ name: "Value", defaultVal: "time", vectorize: true }] }, (x) => {
+  defineFunction(simulate, "Seconds", { params: [{ name: "Value", defaultVal: "time", silentDefault: true, vectorize: true }] }, (x) => {
     let item;
     if (!x.length) {
       item = simulate.time().fullClone();
@@ -72,7 +84,7 @@ export function createFunctions(simulate) {
     return mult(item, new Material(1, simulate.unitManager.getUnitStore(["seconds"], [-1])));
   });
 
-  defineFunction(simulate, "Minutes", { params: [{ name: "Value", defaultVal: "time", vectorize: true }] }, (x) => {
+  defineFunction(simulate, "Minutes", { params: [{ name: "Value", defaultVal: "time", silentDefault: true, vectorize: true }] }, (x) => {
     let item;
     if (!x.length) {
       item = simulate.time().fullClone();
@@ -82,7 +94,7 @@ export function createFunctions(simulate) {
     return mult(item, new Material(1, simulate.unitManager.getUnitStore(["minutes"], [-1])));
   });
 
-  defineFunction(simulate, "Hours", { params: [{ name: "Value", defaultVal: "time", vectorize: true }] }, (x) => {
+  defineFunction(simulate, "Hours", { params: [{ name: "Value", defaultVal: "time", silentDefault: true, vectorize: true }] }, (x) => {
     let item;
     if (!x.length) {
       item = simulate.time().fullClone();
@@ -92,7 +104,7 @@ export function createFunctions(simulate) {
     return mult(item, new Material(1, simulate.unitManager.getUnitStore(["hours"], [-1])));
   });
 
-  defineFunction(simulate, "Days", { params: [{ name: "Value", defaultVal: "time", vectorize: true }] }, (x) => {
+  defineFunction(simulate, "Days", { params: [{ name: "Value", defaultVal: "time", silentDefault: true, vectorize: true }] }, (x) => {
     let item;
     if (!x.length) {
       item = simulate.time().fullClone();
@@ -102,7 +114,7 @@ export function createFunctions(simulate) {
     return mult(item, new Material(1, simulate.unitManager.getUnitStore(["days"], [-1])));
   });
 
-  defineFunction(simulate, "Weeks", { params: [{ name: "Value", defaultVal: "time", vectorize: true }] }, (x) => {
+  defineFunction(simulate, "Weeks", { params: [{ name: "Value", defaultVal: "time", silentDefault: true, vectorize: true }] }, (x) => {
     let item;
     if (!x.length) {
       item = simulate.time().fullClone();
@@ -112,7 +124,7 @@ export function createFunctions(simulate) {
     return mult(item, new Material(1, simulate.unitManager.getUnitStore(["weeks"], [-1])));
   });
 
-  defineFunction(simulate, "Months", { params: [{ name: "Value", defaultVal: "time", vectorize: true }] }, (x) => {
+  defineFunction(simulate, "Months", { params: [{ name: "Value", defaultVal: "time", silentDefault: true, vectorize: true }] }, (x) => {
     let item;
     if (!x.length) {
       item = simulate.time().fullClone();
@@ -122,7 +134,7 @@ export function createFunctions(simulate) {
     return mult(item, new Material(1, simulate.unitManager.getUnitStore(["months"], [-1])));
   });
 
-  defineFunction(simulate, "Years", { params: [{ name: "Value", defaultVal: "time", vectorize: true }] }, (x) => {
+  defineFunction(simulate, "Years", { params: [{ name: "Value", defaultVal: "time", silentDefault: true, vectorize: true }] }, (x) => {
     let item;
     if (!x.length) {
       item = simulate.time().fullClone();
@@ -148,12 +160,15 @@ export function createFunctions(simulate) {
     return new Material(Math.cos(dist));
   });
 
-  defineFunction(simulate, "Unitless", { params: [{ name: "Value", noVector: true }] }, (x) => {
+  defineFunction(simulate, "Unitless", { params: [{ name: "Value", noVector: true }], complete: false }, (x) => {
     return new Material(toNum(x[0]).value);
   });
 
 
-  defineFunction(simulate, "RemoveUnits", { params: [{ name: "Value", vectorize: true }, { name: "ExpectedUnits", needString: true }] }, (x) => {
+  defineFunction(simulate, "RemoveUnits", {
+    params: [{ name: "Value", vectorize: true }, { name: "ExpectedUnits", needString: true }],
+    complete: false
+  }, (x) => {
     let m = toNum(x[0]).fullClone();
     return new Material(m.forceUnits(createUnitStore(x[1], simulate)).value);
   });
@@ -270,6 +285,17 @@ export function createFunctions(simulate) {
         repeat.units = simulate.timeUnits;
       }
 
+      if (width.value < 0) {
+        throw new ModelError("Pulse() width must be greater than or equal to 0.", {
+          code: 1058
+        });
+      }
+      if (repeat.value < 0 && repeat.value !== -1) {
+        throw new ModelError("Pulse() repeat period must be a postive number. It can also be 0 or -1 to disable repeating.", {
+          code: 1059
+        });
+      }
+
       if (repeat.value <= 0) {
         if (eq(simulate.time(), start) || (greaterThanEq(simulate.time(), start) && lessThanEq(simulate.time(), plus(start, width)))) {
           return height;
@@ -303,7 +329,15 @@ export function createFunctions(simulate) {
       if (!finish.units) {
         finish.units = simulate.timeUnits;
       }
+      if (lessThan(finish, start)) {
+        throw new ModelError(`Ramp() finish time must be greater than or equal to start time. Got a start of ${start} and a finish of ${finish}.`, {
+          code: 1057
+        });
+      }
       if (greaterThanEq(simulate.time(), start)) {
+        if (eq(finish, start)) {
+          return height;
+        }
         let q = div(mult(simulate.coreBank.get("min")([minus(finish, start), minus(simulate.time(), start)]), height), minus(finish, start));
         return q;
       }
@@ -332,6 +366,10 @@ export function createFunctions(simulate) {
     });
   simulate.varBank.set("staircase", simulate.coreBank.get("step"));
   simulate.coreBank.set("staircase", simulate.varBank.get("staircase"));
+  setFunctionDef("Staircase", {
+    params: [{ name: "Start Time", vectorize: true }, { name: "Height", vectorize: true, defaultVal: 1 }],
+    complete: false
+  });
 
 
   defineFunction(simulate, "ConverterTable", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Converter]", noVector: true, needPrimitive: true }] },
@@ -358,7 +396,7 @@ export function createFunctions(simulate) {
         }
         return new Material(x);
       };
-      
+
       for (let i = 0; i < input.length; i++) {
         items.push(new Vector([clean(input[i].value), clean(outputs[i])], simulate, ["x", "y"]));
       }
@@ -367,7 +405,7 @@ export function createFunctions(simulate) {
     });
 
 
-  defineFunction(simulate, "Delay", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Delay", vectorize: true }, { name: "Initial Value", defaultVal: "None" }] },
+  defineFunction(simulate, "Delay", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Primitive]", noVector: true, needPrimitive: true }, { name: "Delay", vectorize: true }, { name: "Initial Value", defaultVal: "None", allowString: true, allowBoolean: true }] },
     /**
      * @param {[SPrimitive, Material, ValueType?]} x
      *
@@ -399,7 +437,7 @@ export function createFunctions(simulate) {
 
   defineFunction(simulate, "SmoothN", { object: [simulate.varBank, PrimitiveObject], params: [
     { name: "Expression", noVector: true },
-    { name: "Period", vectorize: true, needNum: true }, 
+    { name: "Period", vectorize: true, needNum: true },
     { name: "Order", noUnits: true, noVector: true, needNum: true },
     { name: "Initial Value", defaultVal: "None" }
   ] },
@@ -423,7 +461,7 @@ export function createFunctions(simulate) {
       });
     });
 
-  
+
   defineFunction(simulate, "DelayN", { object: [simulate.varBank, PrimitiveObject], params: [
     { name: "Expression", noVector: true },
     { name: "Delay", vectorize: true, needNum: true },
@@ -438,7 +476,7 @@ export function createFunctions(simulate) {
 
 
 
-  simulate.varBank.set("fix", function (x, id) {
+  simulate.varBank.set("fix", (x, id) => {
     testArgumentsSize(x, "Fix", 1, 2);
 
     /** @type {Material} */
@@ -464,9 +502,10 @@ export function createFunctions(simulate) {
   });
   simulate.varBank.get("fix").delayEvalParams = true;
   simulate.coreBank.set("fix", simulate.varBank.get("fix"));
+  setFunctionDef("Fix", { params: [{ name: "Value" }, { name: "Period", defaultVal: "All Time" }] });
 
 
-  simulate.varBank.set("populationsize", function (x) {
+  simulate.varBank.set("populationsize", (x) => {
     testArgumentsSize(x, "PopulationSize", 1, 1);
     if (x[0] instanceof SPopulation) {
       return new Material(x[0].agents.length);
@@ -477,6 +516,7 @@ export function createFunctions(simulate) {
   });
   PrimitiveObject["populationsize"] = simulate.varBank.get("populationsize");
   simulate.coreBank.set("populationsize", simulate.varBank.get("populationsize"));
+  setFunctionDef("PopulationSize", { object: [simulate.varBank, PrimitiveObject], params: [{ name: "[Agent Population]", needPopulation: true, noVector: true }] });
 
   defineFunction(simulate, "Remove", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Agent]" }] }, (x) => {
     if (x[0].dead) {
@@ -520,7 +560,7 @@ export function createFunctions(simulate) {
     return x[0];
   });
 
-  defineFunction(simulate, "ResetTimer", { object: [simulate.varBank, PrimitiveObject], params: [{ needPrimitive: true, name: "[Action]" }] }, (x) => {
+  defineFunction(simulate, "ResetTimer", { object: [simulate.varBank, PrimitiveObject], params: [{ needPrimitive: true, name: "[Action]" }], complete: false }, (x) => {
     if (!(x[0] instanceof SAction)) {
       throw new ModelError("ResetTimer requires an Action primitive.", {
         code: 1030
@@ -530,7 +570,7 @@ export function createFunctions(simulate) {
     return new Material(0);
   });
 
-  defineFunction(simulate, "Transition", { object: [simulate.varBank, PrimitiveObject], params: [{ needPrimitive: true, name: "[Transition]" }] }, (x) => {
+  defineFunction(simulate, "Transition", { object: [simulate.varBank, PrimitiveObject], params: [{ needPrimitive: true, name: "[Transition]" }], complete: false }, (x) => {
     if (!(x[0] instanceof STransition)) {
       throw new ModelError("Transition requires an Transition primitive.", {
         code: 1031
@@ -969,7 +1009,7 @@ export function createFunctions(simulate) {
       return new Material(1);
     });
 
-  simulate.varBank.set("print", function (x) {
+  simulate.varBank.set("print", (x) => {
     function makePrimitiveString(x) {
       if (x instanceof String) {
         x = "" + x;
@@ -987,6 +1027,10 @@ export function createFunctions(simulate) {
     }
   });
   simulate.coreBank.set("print", simulate.varBank.get("print"));
+  setFunctionDef("Print", {
+    params: [{ name: "Label or Value", allowString: true, allowBoolean: true }, { name: "Value", defaultVal: "None", allowString: true, allowBoolean: true }],
+    complete: false
+  });
 
   defineFunction(simulate, "Width", { params: [{ needAgents: true, name: "[Agent Population]" }] }, (x) => {
     return x[0].geoWidth;
@@ -1014,8 +1058,8 @@ export function createFunctions(simulate) {
   });
 
   /**
-   * 
-   * @param {Vector} x 
+   *
+   * @param {Vector} x
    */
   function checkLocationVector(x) {
     if (x.items.length !== 2 || !(x.items[0] instanceof Material) || !(x.items[1] instanceof Material)) {
@@ -1023,7 +1067,7 @@ export function createFunctions(simulate) {
         code: 1067
       });
     }
-  
+
     if (x.names && (!x.names.length || x.names.length !== 2 || x.namesLC[0] !== "x" || x.namesLC[1] !== "y")) {
       throw new ModelError("Location vector must have names 'x' and 'y'.", {
         code: 1067
@@ -1032,7 +1076,7 @@ export function createFunctions(simulate) {
   }
 
 
-  defineFunction(simulate, "SetLocation", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Agent]" }, { needVector: true, name: "Direction" }] },
+  defineFunction(simulate, "SetLocation", { object: [simulate.varBank, AgentObject], params: [{ needAgent: true, name: "[Agent]" }, { needVector: true, name: "Location" }] },
     /**
      * @param {[SAgent, Vector<Material>]} x
      * @returns
@@ -1059,7 +1103,7 @@ export function createFunctions(simulate) {
       let v = toNum(x[1]);
 
       checkLocationVector(v);
-      
+
       shiftLocation(x[0], plus(x[0].location, v));
       return new Material(0);
     });
@@ -1096,7 +1140,7 @@ export function createFunctions(simulate) {
           agent: a
         };
       } catch (err) {
-        if (err.message === NOT_INIT) {
+        if (/** @type {Error} */ (err).message === NOT_INIT) {
           throw err;
         }
         throw new ModelError("Location must be a vector or an agent.", {
@@ -1178,6 +1222,23 @@ function distance(a, b, simulate) {
 
   /** @type {Partial<SPopulation>} */
   let agents = a.agent ? a.agent.container : (b.agent ? b.agent.container : null);
+
+  let m1a = l1.items[0], m1b = l1.items[1];
+  let m2a = l2.items[0], m2b = l2.items[1];
+
+  // Simple path when units are the same and no geowrap
+  // Caching not worth it, just calculated it.
+  let xUnits = m1a.units;
+  let unitsMatch = xUnits === m1b.units && xUnits === m2a.units && xUnits === m2b.units;
+
+  if (unitsMatch && !(agents && agents.geoWrap)) {
+    let dx = m1a.value - m2a.value;
+    let dy = m1b.value - m2b.value;
+    // note Math.hypot is slower in current engines
+    // e.g. https://issues.chromium.org/issues/42203737
+    return new Material(Math.sqrt(dx * dx + dy * dy), xUnits);
+  }
+
 
   let cacheKey;
   if (simulate.distanceCacheCount < MAX_DISTANCE_CACHES) {

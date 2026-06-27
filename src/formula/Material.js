@@ -61,12 +61,55 @@ export class Material {
 }
 
 
+/**
+ * Find a unit shared by all materials. Or null if they are all unitless.
+ *
+ * @param {Material[]} materials
+ * @returns {{ units: import("./Units").UnitStore|null, explicitUnits: boolean }}
+ */
+export function findSharedUnits(materials) {
+  if (!materials.length) {
+    return { units: null, explicitUnits: true };
+  }
+
+  let shared = materials[0].units;
+  let explicitUnits = materials[0].explicitUnits;
+
+  if (!shared || shared.isUnitless()) {
+    for (let i = 1; i < materials.length; i++) {
+      let m = materials[i];
+      if (m.units && !m.units.isUnitless()) {
+        throw new ModelError(`Incompatible units between ${m.units.toString()} and unitless.`, {
+          code: 5023
+        });
+      }
+    }
+  } else {
+    for (let i = 1; i < materials.length; i++) {
+      let m = materials[i];
+      let units = m && m.units;
+      let scale = convertUnits(units, shared);
+      if (scale === 0) {
+        throw new ModelError(`Incompatible units between ${units ? units.toString() : "unitless"} and ${shared.toString()}.`, {
+          code: 5023
+        });
+      }
+      if (scale !== 1 || !m.explicitUnits) {
+        explicitUnits = false;
+      }
+    }
+  }
+
+  return { units: shared, explicitUnits };
+}
+
+
 /** @typedef {"MATERIAL"|"VECTOR"|"PRIMITIVE"|null} OperandType */
 
 /**
- * @param {Material|UnitStore} lhs 
- * @param {Material|UnitStore} rhs 
- * @param {string} type 
+ * @param {Material|UnitStore} lhs
+ * @param {Material|UnitStore} rhs
+ * @param {string} type
  * @param {string=} operator
  * @param {import("./Formula").TreeNode=} lhsNode
  * @param {import("./Formula").TreeNode=} rhsNode

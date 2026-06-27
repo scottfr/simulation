@@ -31,7 +31,7 @@ export class TaskQueue {
      * @param {Material} t
      */
     setTime(t: Material): void;
-    time: Material;
+    time: Material | undefined;
     /**
      * @param {Material} newTime
      */
@@ -92,12 +92,12 @@ export class Task {
         task?: Task;
         reverse?: Task;
     };
-    reverse: Function;
+    reverse: Function | undefined;
     priority: number;
-    expires: number;
-    timeShift: Function;
+    expires: number | undefined;
+    timeShift: Function | undefined;
     data: any;
-    blocker: string;
+    blocker: string | undefined;
     queue: any;
     deadAction: boolean;
     deadReverse: boolean;

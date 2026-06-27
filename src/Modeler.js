@@ -12,7 +12,7 @@ import { Vector } from "./formula/Vector.js";
 import { selectFromMatrix } from "./formula/Utilities.js";
 import { DNA } from "./DNA.js";
 import { ModelError } from "./formula/ModelError.js";
-import { commaStr, toHTML } from "./Utilities.js";
+import { commaStr, sanitizeText } from "./Utilities.js";
 import { Graph, Layout } from "../vendor/graph.js";
 import toposort from "../vendor/toposort.js";
 import { Model } from "./api/Model.js";
@@ -340,7 +340,7 @@ function innerRunSimulation(simulate, config) {
       try {
         evaluateGlobals(simulate.model.globals, simulate);
       } catch (err) {
-        
+
         if (err.simulationCommand === "STOP") {
           // pass a STOP() error up
           throw err;
@@ -371,7 +371,7 @@ function innerRunSimulation(simulate, config) {
               });
             }
           }
-        
+
           if (config.processError) {
             config.processError(err);
           }
@@ -397,7 +397,7 @@ function innerRunSimulation(simulate, config) {
     for (let item of modelItems) {
       if (item instanceof Population) {
         if (item.isInAgent()) {
-          throw new ModelError(`Cannot have the agent population <i>[${toHTML(item.name)}]</i> placed within an agent folder.`, {
+          throw new ModelError(`Cannot have the agent population <i>[${sanitizeText(item.name)}]</i> placed within an agent folder.`, {
             primitive: item,
             showEditor: false,
             code: 1006
@@ -406,7 +406,7 @@ function innerRunSimulation(simulate, config) {
 
         let agentBase = item.agentBase;
         if (!agentBase || !(agentBase instanceof Agent)) {
-          throw new ModelError(`You must select a base agent for the primitive <i>[${toHTML(item.name)}]</i>. You can create agent definitions using Folder primitives.`, {
+          throw new ModelError(`You must select a base agent for the primitive <i>[${sanitizeText(item.name)}]</i>. You can create agent definitions using Folder primitives.`, {
             primitive: item,
             showEditor: false,
             code: 1007
@@ -429,7 +429,7 @@ function innerRunSimulation(simulate, config) {
         try {
           x.geoWidth = simpleUnitsTest(/** @type {Material} */(simpleEquation(item.geoWidth, simulate)), x.geoDimUnitsObject, simulate, item);
         } catch (_err) {
-          throw new ModelError(`Invalid width for the agent population <i>[${toHTML(item.name)}]</i>.`, {
+          throw new ModelError(`Invalid width for the agent population <i>[${sanitizeText(item.name)}]</i>.`, {
             primitive: item,
             showEditor: false,
             code: 1008
@@ -438,7 +438,7 @@ function innerRunSimulation(simulate, config) {
         try {
           x.geoHeight = simpleUnitsTest(/** @type {Material} */(simpleEquation(item.geoHeight, simulate)), x.geoDimUnitsObject, simulate, item);
         } catch (_err) {
-          throw new ModelError(`Invalid height for the agent population <i>[${toHTML(item.name)}]</i>.`, {
+          throw new ModelError(`Invalid height for the agent population <i>[${sanitizeText(item.name)}]</i>.`, {
             primitive: item,
             showEditor: false,
             code: 1009
@@ -460,7 +460,7 @@ function innerRunSimulation(simulate, config) {
             x.agentBase = simpleEquation(x.agentBase, simulate, simulate.varBank, null, tree);
           } catch (err) {
             console.warn(err);
-            throw new ModelError(`Invalid Agent Parent for the primitive <i>[${toHTML(agentBase.name)}]</i>.`, {
+            throw new ModelError(`Invalid Agent Parent for the primitive <i>[${sanitizeText(agentBase.name)}]</i>.`, {
               primitive: agentBase,
               showEditor: false,
               code: 1010
@@ -585,7 +585,7 @@ function innerRunSimulation(simulate, config) {
 
       }
     }
-  
+
 
 
     simulate.results = {
@@ -630,7 +630,7 @@ function innerRunSimulation(simulate, config) {
         };
       }
     });
-  
+
 
 
     let hasCompletedFirstPass = false;
@@ -762,7 +762,7 @@ function innerRunSimulation(simulate, config) {
 
         }
 
-      
+
 
 
         simulate.displayInformation.store = {
@@ -795,7 +795,7 @@ function innerRunSimulation(simulate, config) {
       if (count.value > MAX_ARRAY_LENGTH) {
         showRangeErrorMessage();
       }
-      
+
       try {
         for (let i = 0; i <= count.value; i++) {
           simulate.displayInformation.times.push(plus(model.timeStart, mult(model.timeStep, new Material(i))).value);
@@ -844,7 +844,7 @@ function innerRunSimulation(simulate, config) {
 
         if (!simulate.shouldSleep) {
           let timeTaken = Date.now() - simulate.wakeUpTime;
-        
+
           let complexityMultiplier = 1;
           if (simulate.results.times.length > 20000) {
             complexityMultiplier = 4;
@@ -1199,7 +1199,8 @@ function getDNA(node, submodel, solvers, simulate) {
         dna.value = replaceMacros(node, dna, createTree(node.action, "p:" + dna.id + ":action", simulate), submodel, solvers, simulate, false);
       }
     } catch (err) {
-      let msg = `The primitive <i>[${toHTML(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
+
+      let msg = `The primitive <i>[${sanitizeText(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
       if (err instanceof ModelError) {
         msg = msg + "<br/><br/>" + err.message;
       } else {
@@ -1230,7 +1231,7 @@ function getDNA(node, submodel, solvers, simulate) {
     try {
       dna.triggerValue = createTree(node.value, "p:" + node.id + ":triggerValue", simulate);
     } catch (err) {
-      let msg = `The trigger for <i>[${toHTML(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
+      let msg = `The trigger for <i>[${sanitizeText(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
       if (err instanceof ModelError) {
         msg = msg + "<br/><br/>" + err.message;
       }
@@ -1271,14 +1272,14 @@ function getDNA(node, submodel, solvers, simulate) {
           primitive: node,
           showEditor: false,
           code: 1271
-        }); 
+        });
       }
       if (dna.residency.value < 0) {
         throw new ModelError("State residency cannot be less than 0.", {
           primitive: node,
           showEditor: false,
           code: 1272
-        }); 
+        });
       }
     }
   } else if (node instanceof Stock) {
@@ -1302,14 +1303,14 @@ function getDNA(node, submodel, solvers, simulate) {
           primitive: node,
           showEditor: false,
           code: 1073
-        }); 
+        });
       }
       if (dna.delay.value < 0) {
         throw new ModelError("Stock delay cannot be less than 0.", {
           primitive: node,
           showEditor: false,
           code: 1074
-        }); 
+        });
       }
     }
   } else if (node instanceof Flow) {
@@ -1320,7 +1321,7 @@ function getDNA(node, submodel, solvers, simulate) {
     let data = node.values;
 
     if (!data || !data.length) {
-      throw new ModelError(`The converter <i>[${toHTML(dna.name)}]</i> does not have any data.`, {
+      throw new ModelError(`The converter <i>[${sanitizeText(dna.name)}]</i> does not have any data.`, {
         primitive: node,
         showEditor: true,
         code: 1018
@@ -1342,7 +1343,7 @@ function getDNA(node, submodel, solvers, simulate) {
       if (sourcePrimitive) {
         myU = createUnitStore(sourcePrimitive.units, simulate, node);
       } else {
-        throw new ModelError(`The converter <i>[${toHTML(dna.name)}]</i> does not have a source.`, {
+        throw new ModelError(`The converter <i>[${sanitizeText(dna.name)}]</i> does not have a source.`, {
           primitive: node,
           showEditor: true,
           code: 1019
@@ -1371,7 +1372,7 @@ function getDNA(node, submodel, solvers, simulate) {
           dna.flowUnitless = true;
         }
       } catch (err) {
-        throw new ModelError(`Invalid units specified for primitive: "<i>${toHTML(u)}</i>"`, {
+        throw new ModelError(`Invalid units specified for primitive: "<i>${sanitizeText(u)}</i>"`, {
           primitive: node,
           showEditor: true,
           code: 1020
@@ -1569,7 +1570,7 @@ export function linkPrimitive(primitive, dna, simulate) {
       try {
         primitive.equation = trimTree(dna.triggerValue, myNeighborhood, primitive.simulate);
       } catch (err) {
-        let msg = `The primitive <i>[${toHTML(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
+        let msg = `The primitive <i>[${sanitizeText(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
         if (err instanceof ModelError) {
           msg = msg + "<br/><br/>" + err.message;
         }
@@ -1583,7 +1584,8 @@ export function linkPrimitive(primitive, dna, simulate) {
       try {
         primitive.action = trimTree(dna.value, myNeighborhood, primitive.simulate);
       } catch (err) {
-        let msg = `The primitive <i>[${toHTML(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
+
+        let msg = `The primitive <i>[${sanitizeText(dna.name)}]</i> has an equation error that must be corrected before the model can be run.`;
         if (err instanceof ModelError) {
           msg = msg + "<br/><br/>" + err.message;
         }
@@ -1698,7 +1700,7 @@ function buildNetwork(submodel, simulate) {
   } else if (submodel.network === "None") {
     // nothing to do
   } else {
-    throw new ModelError(`Unknown network type: ${toHTML(submodel.network)}.`, {
+    throw new ModelError(`Unknown network type: ${sanitizeText(submodel.network)}.`, {
       primitive: submodel.node,
       showEditor: false,
       code: 1024
@@ -1841,7 +1843,7 @@ function buildPlacements(submodel, simulate) {
     });
 
   } else {
-    throw new ModelError(`Unknown placement type: ${toHTML(submodel.placement)}.`, {
+    throw new ModelError(`Unknown placement type: ${sanitizeText(submodel.placement)}.`, {
       primitive: submodel.node,
       showEditor: false,
       code: 1021
@@ -1939,7 +1941,7 @@ export function getPrimitiveNeighborhood(primitive, dna, simulate, extraLinksPri
       }
       if (!found) {
         if (primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id]) {
-          
+
           addNeighbor(primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id].dna.name.toLowerCase(), primitive.simulate.simulationModel.submodels["base"]["agents"][0].childrenId[item.id]);
           found = true;
         }
@@ -2225,7 +2227,7 @@ function delayGenerator(parameters, primitiveDNA, node, submodel, solvers, simul
 
   order = evaluateTree(trimTree(order, new Map(), simulate), new Map(), simulate).value;
 
-  
+
   if (order < 1 || order !== Math.floor(order)) {
     throw new ModelError("DelayN order must be an integer greater than or equal to 1.", {
       primitive: primitiveDNA.primitive,
@@ -2342,7 +2344,7 @@ function delayGenerator(parameters, primitiveDNA, node, submodel, solvers, simul
   let sDNAs = stocks.map((s) => getDNA(s, submodel, solvers, simulate));
   let fDNAs = flows.map((i) => getDNA(i, submodel, solvers, simulate));
 
-  
+
   for (let i = 1; i < fDNAs.length; i++) {
     fDNAs[i].extraLinksPrimitives.push(stocks[i - 1]);
   }
@@ -2450,7 +2452,7 @@ function smoothGenerator(parameters, primitiveDNA, node, submodel, solvers, simu
     new TreeNode("INNER", "INNER", node.position, [
       new TreeNode("Assert", "IDENT", node.position),
       new TreeNode("FUNCALL", "FUNCALL", node.position, [
-        
+
 
         // Code for:
         //   > not contains({PERIOD > 0}, false)
@@ -2500,7 +2502,7 @@ function smoothGenerator(parameters, primitiveDNA, node, submodel, solvers, simu
   }
 
   primitiveDNA.extraLinksPrimitives.push(stocks[stocks.length - 1]);
-  
+
 
   for (let i = 0; i < order; i++) {
     sDNAs[i].value = initialValue ? initialValue.cloneStructure() : input.cloneStructure();
@@ -2640,6 +2642,8 @@ const MACRO_FNS_NAMES = Object.keys(MACRO_FNS).filter(x => !x.startsWith("_"));
  * @returns {TreeNode}
  */
 function replaceMacros(primitive, primitiveDNA, node, submodel, solvers, simulate, isInitial, assigns = []) {
+  simulate.evaluatingPosition = node.position || simulate.evaluatingPosition;
+
   let macroName;
   let parameters;
 
@@ -2686,4 +2690,3 @@ function replaceMacros(primitive, primitiveDNA, node, submodel, solvers, simulat
 
   return node;
 }
-

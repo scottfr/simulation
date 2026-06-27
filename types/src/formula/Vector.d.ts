@@ -68,6 +68,10 @@ export class Vector<T extends unknown> {
      */
     recurseApply(operation: Function): Vector<any>;
     /**
+     * @param {function} operation
+     */
+    recurseEach(operation: Function): void;
+    /**
      * @returns {any[]}
      */
     fullNames(): any[];

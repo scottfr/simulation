@@ -20,13 +20,13 @@ export function createTree(input: string, source: string, simulate: import("../S
  * @param {Map} nodeBase
  * @param {import("../Simulator").Simulator} simulate
  */
-export function trimTree(root: any, nodeBase: Map, simulate: import("../Simulator").Simulator): any;
+export function trimTree(root: Object, nodeBase: Map<any, any>, simulate: import("../Simulator").Simulator): any;
 /**
  * @param {Object} root
  * @param {Map} varBank
  * @param {import("../Simulator").Simulator} simulate
  */
-export function evaluateTree(root: any, varBank: Map, simulate: import("../Simulator").Simulator): any;
+export function evaluateTree(root: Object, varBank: Map<any, any>, simulate: import("../Simulator").Simulator): any;
 /**
  * @template {Material|Vector} T
  *
@@ -96,10 +96,11 @@ export function greaterThanEq(lhs: ValueType, rhs: ValueType, lhsNode?: TreeNode
  * @param {R} rhs
  * @param {TreeNode=} lhsNode
  * @param {TreeNode=} rhsNode
+ * @param {import("../Simulator").Simulator=} simulate
  *
  * @returns {L extends Vector ? Vector : (R extends Vector ? Vector : (L extends string ? string: (R extends string ? string : Material)))}
  */
-export function plus<L extends Material | Vector<any> | string, R extends Material | Vector<any> | string>(lhs: L, rhs: R, lhsNode?: TreeNode | undefined, rhsNode?: TreeNode | undefined): L extends Vector<any> ? Vector<any> : (R extends Vector<any> ? Vector<any> : (L extends string ? string : (R extends string ? string : Material)));
+export function plus<L extends Material | Vector<any> | string, R extends Material | Vector<any> | string>(lhs: L, rhs: R, lhsNode?: TreeNode | undefined, rhsNode?: TreeNode | undefined, simulate?: import("../Simulator").Simulator | undefined): L extends Vector<any> ? Vector<any> : (R extends Vector<any> ? Vector<any> : (L extends string ? string : (R extends string ? string : Material)));
 /**
  * @template {Material|Vector} L
  * @template {Material|Vector} R
@@ -157,10 +158,10 @@ export function doMod<L extends Material | Vector<any>, R extends Material | Vec
  * @param {Map} scope
  * @param {import("../Simulator").Simulator} simulate
  */
-export function evaluateNode(node: any, scope: Map, simulate: import("../Simulator").Simulator): any;
+export function evaluateNode(node: any, scope: Map<any, any>, simulate: import("../Simulator").Simulator): any;
 export function trueValue(q: any): boolean;
 /** @typedef {import("../SharedTypes.js").ValueType} ValueType */
-export const PARENT_SYMBOL: any;
+export const PARENT_SYMBOL: unique symbol;
 export class PrimitiveStore {
     /**
      * @param {any} primitive
@@ -176,8 +177,8 @@ export class UserFunction {
     fn: any;
     toNum(): any;
 }
-export let StringObject: {};
-export let VectorObject: {};
+export let StringObject: any;
+export let VectorObject: any;
 export class TreeNode {
     /**
      * @param {string} text

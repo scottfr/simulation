@@ -2,7 +2,7 @@ import { Model } from "../../src/api/Model.js";
 
 
 describe.each([
-  ["Euler"], ["RK4"]
+  [/** @type {const} */ ("Euler")], [/** @type {const} */ ("RK4")]
 ])("Subscripting %s",
 /**
  * @param {"Euler"|"RK4"} algorithm

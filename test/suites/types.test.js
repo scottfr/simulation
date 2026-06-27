@@ -62,13 +62,21 @@ test("Functions", () => {
   });
 
   // functions are evaluated
-  x.value = "z <- Function()\n 10\n end function\n\n z > 1";
+  x.value = `z <- Function()
+  10
+end function
+
+z > 1`;
   let res = m.simulate();
   expect(res.value(x)).toBe(1);
 
 
   // functions are evaluated
-  x.value = "z <- Function()\n 1\n end function\n\n z > 1";
+  x.value = `z <- Function()
+  1
+end function
+
+z > 1`;
   res = m.simulate();
   expect(res.value(x)).toBe(0);
 });

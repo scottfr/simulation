@@ -3,16 +3,16 @@ export let fn = {
   /**
    * @param {number} a
    * @param {number} b
-   * @returns 
+   * @returns
    */
   "+": function (a, b) {
     return a + b;
   },
-  
+
   /**
-   * @param {number} a 
-   * @param {number=} b 
-   * @returns 
+   * @param {number} a
+   * @param {number=} b
+   * @returns
    */
   "-": function (a, b) {
     if (b !== undefined) {
@@ -23,76 +23,76 @@ export let fn = {
   },
 
   /**
-   * @param {number} a 
-   * @param {number} b 
-   * @returns 
+   * @param {number} a
+   * @param {number} b
+   * @returns
    */
   "*": function (a, b) {
     return a * b;
   },
 
   /**
-   * @param {number} a 
-   * @param {number} b 
-   * @returns 
+   * @param {number} a
+   * @param {number} b
+   * @returns
    */
   "/": function (a, b) {
     return a / b;
   },
-  
+
   "=": function (a, b) {
     return a === b;
   },
 
   /**
-   * @param {number} a 
-   * @param {number} b 
-   * @returns 
+   * @param {number} a
+   * @param {number} b
+   * @returns
    */
   "<": function (a, b) {
     return a < b;
   },
 
   /**
-   * @param {number} a 
-   * @param {number} b 
-   * @returns 
+   * @param {number} a
+   * @param {number} b
+   * @returns
    */
   "<=": function (a, b) {
     return a <= b;
   },
 
   /**
-   * @param {number} a 
-   * @param {number} b 
-   * @returns 
+   * @param {number} a
+   * @param {number} b
+   * @returns
    */
   ">": function (a, b) {
     return a > b;
   },
 
   /**
-   * @param {number} a 
-   * @param {number} b 
-   * @returns 
+   * @param {number} a
+   * @param {number} b
+   * @returns
    */
   ">=": function (a, b) {
     return a >= b;
   },
 
   /**
-   * @param {number} a 
-   * @param {number} b 
-   * @returns 
+   * @param {number} a
+   * @param {number} b
+   * @returns
    */
   "mod": function (a, b) {
     return a % b;
   },
 
   /**
-   * @param {number} a 
-   * @param {number} b 
-   * @returns 
+   * @param {number} a
+   * @param {number} b
+   * @returns
    */
   "expt": function (a, b) {
     return Math.pow(a, b);
@@ -107,9 +107,9 @@ export let fn = {
   "sqrt": Math.sqrt,
 
   /**
-   * @param {number} a 
-   * @param {number=} b 
-   * @returns 
+   * @param {number} a
+   * @param {number=} b
+   * @returns
    */
   "log": function (a, b) {
     if (b !== undefined) {

@@ -3,7 +3,7 @@
  *
  * @returns
  */
-export function loadXML(modelString: string): ModelNode;
+export function loadXML(modelString: string): ModelNode | null;
 /**
  * @param {string} xml - Insight Maker model XML string
  */

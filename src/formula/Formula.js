@@ -7,10 +7,17 @@ import { Vector } from "./Vector.js";
 import { createFunctions as generalCreateFunctions } from "./CalcFunctions.js";
 import { createFunctions as modelerCreateFunctions } from "../Functions.js";
 import { ModelError } from "./ModelError.js";
-import antlr from "../../vendor/antlr4-all.js";
-import FormulaLexer from "./grammar/FormulaLexer.js";
-import FormulaParser from "./grammar/FormulaParser.js";
-import { toHTML } from "../Utilities.js";
+import {
+  BailErrorStrategy,
+  CharStream,
+  CommonTokenStream,
+  PredictionMode,
+  ParseCancellationException,
+  Token
+} from "../../vendor/antlr4ng-all.js";
+import { FormulaLexer } from "./grammar/FormulaLexer.js";
+import { FormulaParser } from "./grammar/FormulaParser.js";
+import { sanitizeText } from "../Utilities.js";
 import { DUPLICATE_PRIMITIVE_NAMES } from "../Modeler.js";
 
 
@@ -32,13 +39,22 @@ export function bootCalc(simulate) {
   simulate.varBank.set("e", new Material(Math.E));
   simulate.varBank.set("pi", new Material(Math.PI));
   simulate.varBank.set("phi", new Material(1.61803399));
-  
+
   generalCreateFunctions(simulate);
   modelerCreateFunctions(simulate);
 }
 
+/**
+ * @param {any} node
+ * @param {number} ruleIndex
+ * @returns {boolean}
+ */
+function isRule(node, ruleIndex) {
+  return !!node && typeof node === "object" && node.ruleIndex === ruleIndex;
+}
+
 function getInnerBlock(node, parser, source) {
-  let innerBlock = node.children.find(x => x instanceof FormulaParser.InnerBlockContext);
+  let innerBlock = node.children.find(x => isRule(x, FormulaParser.RULE_innerBlock));
   if (!innerBlock || !innerBlock.children) {
     return new TreeNode("", "LINES", {
       line: node.start.line,
@@ -94,18 +110,32 @@ export class UserFunction {
 }
 
 
-export let StringObject = {};
-export let VectorObject = {};
+export let StringObject = Object.create(null);
+Object.defineProperty(StringObject, "_object_type", {
+  value: "string",
+  enumerable: false,
+  configurable: false,
+  writable: false
+});
+
+
+export let VectorObject = Object.create(null);
+Object.defineProperty(VectorObject, "_object_type", {
+  value: "vector",
+  enumerable: false,
+  configurable: false,
+  writable: false
+});
 
 
 
 /**
  * Returns a snippet of the input string around the error position. E.g. "...bc xy..."
- * 
- * @param {string} input 
- * @param {number} line 
- * @param {number} column 
- * @returns 
+ *
+ * @param {string} input
+ * @param {number} line
+ * @param {number} column
+ * @returns
  */
 function getErrorSnippet(input, line, column) {
   const PADDING_CHARS = 4;
@@ -122,23 +152,34 @@ function getErrorSnippet(input, line, column) {
   const prefix = start > 0 ? "..." : "";
   const suffix = end < errorLine.length ? "..." : "";
 
-  return prefix + errorLine.substring(start, end) + suffix;
+  return sanitizeText(prefix + errorLine.substring(start, end) + suffix);
 }
 
 
+// cached parse trees, makes subsequent simulations faster
+const PARSED_TREE_CACHE = new Map();
+const PARSED_TREE_CACHE_MAX = 4000;
+
 
 /**
- * @param {string} input 
- * @param {string} source 
+ * @param {string} input
+ * @param {string} source
  * @param {import("../Simulator").Simulator} simulate
- * @returns 
+ * @returns
  */
 export function createTree(input, source, simulate) {
   simulate.evaluatingPosition = {
     line: 1,
     source
   };
-  const chars = new antlr.InputStream(input);
+
+  let cacheKey = source + "\0" + input;
+  let cached = PARSED_TREE_CACHE.get(cacheKey);
+  if (cached) {
+    return cached.cloneStructure();
+  }
+
+  const chars = CharStream.fromString(input);
   const lexer = new FormulaLexer(chars);
   lexer.removeErrorListeners();
   lexer.addErrorListener({
@@ -155,13 +196,17 @@ export function createTree(input, source, simulate) {
       throw new ModelError(`Invalid equation syntax${snippet}`, {
         code: 9000
       });
-    }
+    },
+    reportAmbiguity: () => {},
+    reportAttemptingFullContext: () => {},
+    reportContextSensitivity: () => {}
   });
-  const tokens = new antlr.CommonTokenStream(lexer);
+  const tokens = new CommonTokenStream(lexer);
 
   const parser = new FormulaParser(tokens);
-  parser._interp.predictionMode = antlr.atn.PredictionMode.SLL; 
-  parser.errorHandler = new antlr.error.BailErrorStrategy();
+  parser.interpreter.predictionMode = PredictionMode.SLL;
+  // @ts-ignore
+  parser.errorHandler = new BailErrorStrategy();
 
   parser.removeErrorListeners();
   parser.addErrorListener({
@@ -181,11 +226,31 @@ export function createTree(input, source, simulate) {
       // console.log("reportContextSensitivity", args);
     }
   });
-  const parsedTree = parser.lines();
-  removeWhitespaceTokens(parsedTree);
-  let root = convertToObject(parsedTree, parser, source);
+  try {
+    const parsedTree = parser.lines();
+    removeWhitespaceTokens(parsedTree);
 
-  return root;
+    let tree = convertToObject(parsedTree, parser, source);
+    if (PARSED_TREE_CACHE.size >= PARSED_TREE_CACHE_MAX) {
+      // Evict the oldest entry. Map iteration is insertion order.
+      let oldest = PARSED_TREE_CACHE.keys().next().value;
+      PARSED_TREE_CACHE.delete(oldest);
+    }
+
+    PARSED_TREE_CACHE.set(cacheKey, tree);
+    return tree.cloneStructure();
+  } catch (err) {
+    if (err instanceof ModelError) {
+      throw err;
+    }
+
+    if (err instanceof ParseCancellationException) {
+      let ctx = err.cause.ctx.stop || err.cause.ctx.start;
+      throw new ModelError(`Invalid equation syntax at "${getErrorSnippet(input, ctx.line, ctx.column)}"`, { code: 9000 });
+    }
+
+    throw err;
+  }
 }
 
 function removeWhitespaceTokens(node) {
@@ -273,11 +338,11 @@ export class TreeNode {
 }
 
 /**
- * @param {Partial<import("antlr4").ParserRuleContext>} node 
- * @param {function(Partial<import("antlr4").ParserRuleContext>):TreeNode} fn 
- * @param {*} parser 
- * @param {string} source 
- * @returns 
+ * @param {Partial<import("antlr4ng").ParserRuleContext>} node
+ * @param {function(Partial<import("antlr4ng").ParseTree>):TreeNode} fn
+ * @param {*} parser
+ * @param {string} source
+ * @returns
  */
 function flatChildrenToTreeRight(node, fn, parser, source) {
   let children = node.children.slice();
@@ -297,11 +362,11 @@ function flatChildrenToTreeRight(node, fn, parser, source) {
 
 
 /**
- * @param {Partial<import("antlr4").ParserRuleContext>} node 
- * @param {function(Partial<import("antlr4").ParserRuleContext>):TreeNode} fn 
- * @param {*} parser 
- * @param {string} source 
- * @returns 
+ * @param {Partial<import("antlr4ng").ParserRuleContext>} node
+ * @param {function(Partial<import("antlr4ng").ParseTree>):TreeNode} fn
+ * @param {*} parser
+ * @param {string} source
+ * @returns
  */
 function flatChildrenToTreeLeft(node, fn, parser, source) {
   let children = node.children.slice();
@@ -320,33 +385,64 @@ function flatChildrenToTreeLeft(node, fn, parser, source) {
 }
 
 
-/* @type {WeakMap<Partial<import("antlr4").ParserRuleContext>, string>} */
-let nodeTexts = new WeakMap();
-
-/**
- * @param {Partial<import("antlr4").ParserRuleContext>} node 
- */
-function getNodeText(node) {
-  let t = nodeTexts.get(node);
-  if (t !== undefined) {
-    return t;
-  
+function convertSimpleTerminalNode(node, source, fallbackLine) {
+  // @ts-ignore
+  const symbol = node?.symbol;
+  if (!symbol) {
+    return null;
   }
-  let text = node.getText();
-  nodeTexts.set(node, text);
-  return text;
+
+  const type = symbol.type;
+  const text = symbol.text;
+
+  if (type === FormulaLexer.BOOL) {
+    return new TreeNode(text, text.toLowerCase() === "true" ? "TRUE" : "FALSE", {
+      line: symbol.line,
+      source
+    });
+  }
+
+  if (type === FormulaLexer.STRING) {
+    return new TreeNode(text, "STRING", {
+      line: symbol.line,
+      source
+    });
+  }
+
+  if (type === FormulaLexer.IDENT) {
+    return new TreeNode(text, "IDENT", {
+      line: symbol.line,
+      source
+    });
+  }
+
+  if (type === FormulaLexer.PRIMITIVE) {
+    return new TreeNode(text, "PRIMITIVE", {
+      line: symbol.line || fallbackLine,
+      source
+    });
+  }
+
+  if (type === FormulaLexer.MULT) {
+    return new TreeNode(text, "MULT", {
+      line: symbol.line,
+      source
+    });
+  }
+
+  return null;
 }
 
-
 /**
- * @param {Partial<import("antlr4").ParserRuleContext>} node 
- * @param {object} parser 
+ * @param {any} node
+ * @param {object} parser
  * @param {string} source
- * @returns 
+ * @returns
  */
 function convertToObject(node, parser, source) {
   // @ts-ignore
   let ruleIndex = node.ruleIndex;
+
   if (ruleIndex === FormulaParser.RULE_lines) {
     let current = new TreeNode("", "LINES", {
       line: node.start.line,
@@ -354,11 +450,11 @@ function convertToObject(node, parser, source) {
     });
     let children = node.children;
     for (let i = 0; i < children.length; i++) {
-      // skip EOF symbol
-      if (getNodeText(children[i]) === "<EOF>") {
+      let type = children[i].symbol?.type;
+      if (type === Token.EOF) {
         continue;
       }
-      if (getNodeText(children[i]) === "\n" || getNodeText(children[i]) === "\r\n") {
+      if (type === FormulaLexer.NEWLINES) {
         continue;
       }
       current.children.push(convertToObject(children[i], parser, source));
@@ -367,14 +463,14 @@ function convertToObject(node, parser, source) {
         current.position = current.children[current.children.length - 1].position;
       }
     }
-    
+
     return current;
   } else if (ruleIndex === FormulaParser.RULE_multiplicativeExpression) {
     if (node.children.length > 1) {
-      // [left, '*'|'/'|'%'|'mod', right]
       return flatChildrenToTreeLeft(node, (op) => {
-        let operator = getNodeText(op);
-        return new TreeNode("", operator === "*" ? "MULT" : ( operator === "/" ? "DIV": "MOD"), {
+        // @ts-ignore
+        let type = op.symbol.type;
+        return new TreeNode("", type === FormulaLexer.MULT ? "MULT" : (type === FormulaLexer.DIV ? "DIV" : "MOD"), {
           // @ts-ignore
           line: (op.start || op.symbol).line,
           source
@@ -383,96 +479,108 @@ function convertToObject(node, parser, source) {
     }
 
   } else if (ruleIndex === FormulaParser.RULE_number) {
-    let current = new TreeNode(getNodeText(node), "FLOAT", {
+    return new TreeNode(node.getText(), "FLOAT", {
       line: node.start.line,
       source
     });
-    return current;
+
   } else if (ruleIndex === FormulaParser.RULE_value) {
-    let token = node.children[0];
-    // convert token 
-
-    // @ts-ignore
-    let symbol = token.symbol;
-
-    if (symbol) {
-      if (symbol.type === FormulaLexer.BOOL) {
-        return new TreeNode(getNodeText(token), getNodeText(token).toLowerCase() === "true" ? "TRUE" : "FALSE", {
-          line: symbol.line,
-          source
-        });
-      } else if (symbol.type === FormulaLexer.STRING) {
-        return new TreeNode(getNodeText(token), "STRING", {
-          line: symbol.line,
-          source
-        });
-      } else if (symbol.type === FormulaLexer.IDENT) {
-        return new TreeNode(getNodeText(token), "IDENT", {
-          line: symbol.line,
-          source
-        });
-      } else if (symbol.type === FormulaLexer.PRIMITIVE) {
-        return new TreeNode(getNodeText(token), "PRIMITIVE", {
-          line: node.start.line,
-          source
-        });
-      }
+    const child = node.children[0];
+    const simple = convertSimpleTerminalNode(child, source, node.start.line);
+    if (simple) {
+      return simple;
     }
-  //boolean lexer
+    return convertToObject(child, parser, source);
+
+  } else if (ruleIndex === FormulaParser.RULE_symbolRef) {
+    return new TreeNode(node.children[0].symbol.text, "IDENT", {
+      line: node.start.line,
+      source
+    });
+
+  } else if (ruleIndex === FormulaParser.RULE_typeRef) {
+    return new TreeNode(node.children[0].symbol.text, "IDENT", {
+      line: node.start.line,
+      source
+    });
+
+  } else if (ruleIndex === FormulaParser.RULE_primitiveRef) {
+    return new TreeNode(node.children[0].symbol.text, "PRIMITIVE", {
+      line: node.start.line,
+      source
+    });
+
+  } else if (ruleIndex === FormulaParser.RULE_memberSymbolRef) {
+    let token = node.children[0];
+    let simple = convertSimpleTerminalNode(token, source, node.start.line);
+    if (simple) {
+      return simple;
+    }
+    throw new ModelError("Unknown invalid equation member syntax", {
+      code: 9002
+    });
+
+  // boolean lexer
   // @ts-ignore
-  } else if (node.symbol?.type ===FormulaLexer.BOOL) {
-    return new TreeNode("", getNodeText(node).toLowerCase() === "true" ? "TRUE" : "FALSE", {
+  } else if (node.symbol?.type === FormulaLexer.BOOL) {
+    return new TreeNode("", node.symbol.text.toLowerCase() === "true" ? "TRUE" : "FALSE", {
       // @ts-ignore
       line: node.symbol.line,
       source
     });
+
   } else if (ruleIndex === FormulaParser.RULE_returnExp) {
-    /**
-     * returnExp
-	   * :
-	   * RETURNSTATEMENT^ logicalExpression
-	   * ;
-     */
+    let expr = null;
+    for (let i = 0; i < node.children.length; i++) {
+      if (isRule(node.children[i], FormulaParser.RULE_logicalExpression)) {
+        expr = node.children[i];
+        break;
+      }
+    }
+
+    if (!expr) {
+      throw new ModelError("Invalid return expression syntax", {
+        code: 9002
+      });
+    }
 
     let current = new TreeNode("return", "RETURN", {
       line: node.start.line,
       source
-    }, [convertToObject(node.children[1], parser, source)]);
+    }, [convertToObject(expr, parser, source)]);
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_throwExp) {
-    /**
-     * throwExp
-	   * : THROWSTATEMENT primaryExpression -> ^(THROW primaryExpression)
-	   * ;
-     */
     let current = new TreeNode("", "THROW", {
       line: node.start.line,
       source
     }, [convertToObject(node.children[1], parser, source)]);
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_additiveExpression) {
     if (node.children.length > 1) {
-      // [left, '+'|'-', right]
       return flatChildrenToTreeLeft(node, (op) => {
-        let operator = getNodeText(op);
-        return new TreeNode(getNodeText(op), operator === "+" ? "PLUS" : "MINUS", {
+        // @ts-ignore
+        let type = op.symbol.type;
+        // @ts-ignore
+        return new TreeNode(op.symbol.text, type === FormulaLexer.PLUS ? "PLUS" : "MINUS", {
           // @ts-ignore
           line: (op.start || op.symbol).line,
           source
         });
       }, parser, source);
     }
+
   } else if (ruleIndex === FormulaParser.RULE_powerExpression) {
     if (node.children.length > 1) {
-      // [left, '^', right]
-      return flatChildrenToTreeRight(node, (op) => {
+      return flatChildrenToTreeRight(node, () => {
         return new TreeNode("", "POWER", {
-          // @ts-ignore
-          line: (op.start || op.symbol).line,
+          line: node.start.line,
           source
         });
       }, parser, source);
     }
+
   } else if (ruleIndex === FormulaParser.RULE_unaryOrNegate) {
     if (node.children.length > 1) {
       let current = new TreeNode("", "NEGATE", {
@@ -482,9 +590,9 @@ function convertToObject(node, parser, source) {
       current.children = [convertToObject(node.children[1], parser, source)];
       return current;
     }
+
   } else if (ruleIndex === FormulaParser.RULE_arrayExpression) {
     if (node.children.length > 1) {
-      // [left, ':', (step : ':',)? right]
       let current = new TreeNode("", "RANGE", {
         line: node.start.line,
         source
@@ -495,9 +603,9 @@ function convertToObject(node, parser, source) {
       }
       return current;
     }
+
   } else if (ruleIndex === FormulaParser.RULE_unaryExpression) {
     if (node.children.length > 1) {
-      // ['!', right]
       let current = new TreeNode("", "NOT", {
         line: node.start.line,
         source
@@ -505,76 +613,71 @@ function convertToObject(node, parser, source) {
       current.children = [convertToObject(node.children[1], parser, source)];
       return current;
     }
+
   } else if (ruleIndex === FormulaParser.RULE_booleanXORExpression) {
     if (node.children.length > 1) {
-      // [left, 'XOR', right]
-      return flatChildrenToTreeLeft(node, (op) => {
+      return flatChildrenToTreeLeft(node, () => {
         return new TreeNode("", "XOR", {
-          // @ts-ignore
-          line: (op.start || op.symbol).line,
+          line: node.start.line,
           source
         });
       }, parser, source);
     }
+
   } else if (ruleIndex === FormulaParser.RULE_equalityExpression) {
     if (node.children.length > 1) {
-      // [left, '='|'=='|'<>'|'!=', right]
       return flatChildrenToTreeLeft(node, (op) => {
-        let operator = getNodeText(op);
-        return new TreeNode("", operator === "=" || operator === "==" ? "EQUALS" : "NOTEQUALS", {
+        // @ts-ignore
+        let type = op.symbol.type;
+        return new TreeNode("", type === FormulaLexer.EQUALS ? "EQUALS" : "NOTEQUALS", {
           // @ts-ignore
           line: (op.start || op.symbol).line,
           source
         });
       }, parser, source);
     }
+
   } else if (ruleIndex === FormulaParser.RULE_relationalExpression) {
     if (node.children.length > 1) {
-      // [left, '<'|'>'|'<='|'>=', right]
       return flatChildrenToTreeLeft(node, (op) => {
-        let operator = getNodeText(op);
-        return new TreeNode("", operator === "<" ? "LT" : (operator === ">" ? "GT" : (operator === "<=" ? "LTEQ" : "GTEQ")), {
+        // @ts-ignore
+        let type = op.symbol.type;
+        return new TreeNode("", type === FormulaLexer.LT ? "LT" : (type === FormulaLexer.GT ? "GT" : (type === FormulaLexer.LTEQ ? "LTEQ" : "GTEQ")), {
           // @ts-ignore
           line: (op.start || op.symbol).line,
           source
         });
       }, parser, source);
     }
+
   } else if (ruleIndex === FormulaParser.RULE_logicalExpression) {
     if (node.children.length > 1) {
-      // [left, '||'|'OR', right]
-      return flatChildrenToTreeLeft(node, (op) => {
+      return flatChildrenToTreeLeft(node, () => {
         return new TreeNode("", "OR", {
-          // @ts-ignore
-          line: (op.start || op.symbol).line,
+          line: node.start.line,
           source
         });
       }, parser, source);
     }
+
   } else if (ruleIndex === FormulaParser.RULE_booleanAndExpression) {
     if (node.children.length > 1) {
-      // [left, '&&'|'AND', right]
-      return flatChildrenToTreeLeft(node, (op) => {
+      return flatChildrenToTreeLeft(node, () => {
         return new TreeNode("", "AND", {
-          // @ts-ignore
-          line: (op.start || op.symbol).line,
+          line: node.start.line,
           source
         });
-      }
-      , parser, source);
+      }, parser, source);
     }
-  } else if (ruleIndex === FormulaParser.RULE_negnumber) {
-    /**
-     * negnumber	: '-' number -> ^(NEGATE number);
-     */
 
-    return new TreeNode(getNodeText(node), "FLOAT", {
+  } else if (ruleIndex === FormulaParser.RULE_negnumber) {
+    return new TreeNode(node.getText(), "FLOAT", {
       line: node.start.line,
       source
     });
+
   } else if (ruleIndex === FormulaParser.RULE_negationExpression) {
     if (node.children.length > 1) {
-      // ['-', right]
       let current = new TreeNode("", "NEGATE", {
         line: node.start.line,
         source
@@ -582,13 +685,8 @@ function convertToObject(node, parser, source) {
       current.children = [convertToObject(node.children[1], parser, source)];
       return current;
     }
-  // boolean lexer
+
   } else if (ruleIndex === FormulaParser.RULE_anonFunctionDef) {
-    /**
-     * anonFunctionDef
-     * : FUNCTIONSTATEMENT  '(' (IDENT  (EQUALS  defaultValue | (',' IDENT )*) (',' IDENT EQUALS defaultValue )*)? ')' ( (NEWLINE+ innerBlock  ENDBLOCK FUNCTIONSTATEMENT) | expression) -> ^(ANONFUNCTION ^(PARAMS IDENT*) ^(DEFAULTS defaultValue*) innerBlock? expression?)
-     * ;
-     */
     let current = new TreeNode("", "ANONFUNCTION", {
       line: node.start.line,
       source
@@ -603,38 +701,34 @@ function convertToObject(node, parser, source) {
     });
     params.children = [];
     defaults.children = [];
-    // set params and defaults
+
     for (let i = 2; i < node.children.length; i++) {
-      if (getNodeText(node.children[i]) === ")") {
+      let type = node.children[i].symbol?.type;
+      if (type === FormulaLexer.RPAREN) {
         break;
       }
-      if (getNodeText(node.children[i]) === ",") {
+      if (type === FormulaLexer.COMMA) {
         continue;
       }
-      params.children.push(new TreeNode(getNodeText(node.children[i]), "IDENT", {
+      params.children.push(new TreeNode(node.children[i].symbol.text, "IDENT", {
         line: node.start.line,
         source
       }));
-      if (getNodeText(node.children[i + 1]) === "=") {
+      if (node.children[i + 1].symbol?.type === FormulaLexer.EQUALS) {
         defaults.children.push(convertToObject(node.children[i + 2], parser, source));
         i += 2;
       }
     }
+
     current.children = [params, defaults];
-    if (node.children[node.children.length - 1] instanceof FormulaParser.ExpressionContext) {
+    if (isRule(node.children[node.children.length - 1], FormulaParser.RULE_expression)) {
       current.children.push(convertToObject(node.children[node.children.length - 1], parser, source));
     } else {
       current.children.push(getInnerBlock(node, parser, source));
     }
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_functionDef) {
-    /**
-     functionDef
-	: FUNCTIONSTATEMENT IDENT '(' (IDENT  (EQUALS  defaultValue | (',' IDENT )*) (',' IDENT EQUALS defaultValue )*)? ')' NEWLINE+ innerBlock  ENDBLOCK FUNCTIONSTATEMENT -> ^(FUNCTION ^(PARAMS IDENT*) ^(DEFAULTS defaultValue*) innerBlock)
-	;
-
-     */
-
     let current = new TreeNode("", "FUNCTION", {
       line: node.start.line,
       source
@@ -647,24 +741,24 @@ function convertToObject(node, parser, source) {
       line: node.start.line,
       source
     });
-    params.children.push(new TreeNode(getNodeText(node.children[1]), "IDENT", {
+    params.children.push(new TreeNode(node.children[1].symbol.text, "IDENT", {
       line: node.start.line,
       source
     }));
 
-    // set params and defaults
     for (let i = 3; i < node.children.length; i++) {
-      if (getNodeText(node.children[i]) === ")") {
+      let type = node.children[i].symbol?.type;
+      if (type === FormulaLexer.RPAREN) {
         break;
       }
-      if (getNodeText(node.children[i]) === ",") {
+      if (type === FormulaLexer.COMMA) {
         continue;
       }
-      params.children.push(new TreeNode(getNodeText(node.children[i]), "IDENT", {
+      params.children.push(new TreeNode(node.children[i].symbol.text, "IDENT", {
         line: node.start.line,
         source
       }));
-      if (getNodeText(node.children[i + 1]) === "=") {
+      if (node.children[i + 1].symbol?.type === FormulaLexer.EQUALS) {
         defaults.children.push(convertToObject(node.children[i + 2], parser, source));
         i += 2;
       }
@@ -673,47 +767,30 @@ function convertToObject(node, parser, source) {
     return current;
 
   } else if (ruleIndex === FormulaParser.RULE_innerBlock) {
-    /**
-     * innerBlock
-	   * :	(expression  (NEWLINE+))* -> ^(LINES expression+)
-	   *;
-     */
     let current = new TreeNode("", "LINES", {
       line: node.start.line,
       source
     });
     for (let i = 0; i < node.children?.length; i++) {
-      if (getNodeText(node.children[i]) === "\n" || getNodeText(node.children[i]) === "\r\n") {
+      if (node.children[i].symbol?.type === FormulaLexer.NEWLINES) {
         continue;
       }
       current.children.push(convertToObject(node.children[i], parser, source));
     }
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_newObject) {
-    /**
-     newObject
-: NEWSTATEMENT IDENT funCall? -> ^(NEW IDENT funCall?);
-     */
     let current = new TreeNode("", "NEW", {
       line: node.start.line,
       source
     });
-    current.children = [new TreeNode(getNodeText(node.children[1]), "IDENT", {
-      line: node.start.line,
-      source
-    })];
+    current.children = [convertToObject(node.children[1], parser, source)];
     if (node.children.length > 2) {
       current.children.push(convertToObject(node.children[2], parser, source));
     }
     return current;
-  } else if (ruleIndex === FormulaParser.RULE_whileLoop) {
-    /**
-     * 
-whileLoop
-	: WHILESTATEMENT logicalExpression NEWLINE+ innerBlock  ENDBLOCK LOOPSTATEMENT -> ^(WHILE logicalExpression innerBlock)
-	;
-     */
 
+  } else if (ruleIndex === FormulaParser.RULE_whileLoop) {
     let current = new TreeNode("", "WHILE", {
       line: node.start.line,
       source
@@ -723,71 +800,62 @@ whileLoop
       getInnerBlock(node, parser, source)
     ];
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_forLoop) {
-    /**
-     
-forLoop
-	: FORSTATEMENT IDENT FROMSTATEMENT logicalExpression TOSTATEMENT logicalExpression (BYSTATEMENT logicalExpression)? NEWLINE+ innerBlock  ENDBLOCK LOOPSTATEMENT -> ^(FOR IDENT ^(PARAMS logicalExpression*) innerBlock)
-	;
-     */
     let current = new TreeNode("", "FOR", {
       line: node.start.line,
       source
     });
-    current.children = [new TreeNode(getNodeText(node.children[1]), "IDENT", {
-      line: node.start.line,
-      source
-    }), new TreeNode("", "PARAMS", {
-      line: node.start.line,
-      source
-    },
-    node.children.filter(x => x instanceof FormulaParser.LogicalExpressionContext).map(x => convertToObject(x, parser, source))),
-    getInnerBlock(node, parser, source)
+    current.children = [
+      new TreeNode(node.children[1].symbol.text, "IDENT", {
+        line: node.start.line,
+        source
+      }),
+      new TreeNode("", "PARAMS", {
+        line: node.start.line,
+        source
+      },
+      node.children
+        .filter(x => isRule(x, FormulaParser.RULE_logicalExpression))
+        .map(x => convertToObject(x, parser, source))),
+      getInnerBlock(node, parser, source)
     ];
 
     return current;
 
   } else if (ruleIndex === FormulaParser.RULE_forInLoop) {
-    /**
-     
-forInLoop
-	: FORSTATEMENT IDENT INSTATEMENT logicalExpression NEWLINE+ innerBlock  ENDBLOCK LOOPSTATEMENT  -> ^(FORIN IDENT logicalExpression innerBlock)
-	;
-     */
-
     let current = new TreeNode("", "FORIN", {
       line: node.start.line,
       source
     });
-    current.children = [new TreeNode(getNodeText(node.children[1]), "IDENT", {
-      line: node.start.line,
-      source
-    }),
-    convertToObject(node.children[3], parser, source),
-    getInnerBlock(node, parser, source)
+    current.children = [
+      new TreeNode(node.children[1].symbol.text, "IDENT", {
+        line: node.start.line,
+        source
+      }),
+      convertToObject(node.children[3], parser, source),
+      getInnerBlock(node, parser, source)
     ];
 
     return current;
 
   } else if (ruleIndex === FormulaParser.RULE_ifThenElse) {
-    /**
-     
-ifThenElse
-	: IFSTATEMENT logicalExpression THENSTATEMENT  NEWLINE+ innerBlock  (ELSESTATEMENT IFSTATEMENT logicalExpression THENSTATEMENT NEWLINE+ innerBlock)* (ELSESTATEMENT NEWLINE+ innerBlock)? ENDBLOCK IFSTATEMENT -> ^(IFTHENELSE ^(PARAMS logicalExpression+) ^(PARAMS innerBlock+))
-	;
-     */
     let current = new TreeNode("", "IFTHENELSE", {
       line: node.start.line,
       source
     });
 
-    // find innerblocks, if there isn't an innerblock between two else statements, create an empty one
     let innerBlocks = [];
     // @ts-ignore
-    let potentialInnerBlocks = node.children.filter(x => x instanceof FormulaParser.InnerBlockContext || x.symbol?.type === FormulaLexer.ELSESTATEMENT || x.symbol?.type === FormulaLexer.ENDBLOCK);
+    let potentialInnerBlocks = node.children.filter(x => (
+      isRule(x, FormulaParser.RULE_innerBlock) ||
+      x.symbol?.type === FormulaLexer.ELSESTATEMENT ||
+      x.symbol?.type === FormulaLexer.ENDPREFIX ||
+      x.symbol?.type === FormulaLexer.ENDBLOCK
+    ));
     let hadBlock = false;
     for (let i = 0; i < potentialInnerBlocks.length; i++) {
-      if (potentialInnerBlocks[i] instanceof FormulaParser.InnerBlockContext) {
+      if (isRule(potentialInnerBlocks[i], FormulaParser.RULE_innerBlock)) {
         hadBlock = true;
         innerBlocks.push(convertToObject(potentialInnerBlocks[i], parser, source));
       } else {
@@ -806,7 +874,9 @@ ifThenElse
         line: node.start.line,
         source
       },
-      node.children.filter(x => x instanceof FormulaParser.LogicalExpressionContext).map(x => convertToObject(x, parser, source))),
+      node.children
+        .filter(x => isRule(x, FormulaParser.RULE_logicalExpression))
+        .map(x => convertToObject(x, parser, source))),
       new TreeNode("", "PARAMS", {
         line: node.start.line,
         source
@@ -816,25 +886,23 @@ ifThenElse
 
     return current;
 
-  
   } else if (ruleIndex === FormulaParser.RULE_tryCatch) {
-    /**
-     
-tryCatch
-	: TRYSTATEMENT NEWLINE+ innerBlock CATCHSTATEMENT IDENT NEWLINE+  innerBlock ENDBLOCK TRYSTATEMENT -> ^(TRYCATCH innerBlock* IDENT)
-	;
-     */
     let current = new TreeNode("", "TRYCATCH", {
       line: node.start.line,
       source
     });
-    // find innerBlocks, replacing with lines if missing
+
     let innerBlocks = [];
     // @ts-ignore
-    let potentialInnerBlocks = node.children.filter(x => x instanceof FormulaParser.InnerBlockContext || x.symbol?.type === FormulaLexer.CATCHSTATEMENT || x.symbol?.type === FormulaLexer.ENDBLOCK);
+    let potentialInnerBlocks = node.children.filter(x => (
+      isRule(x, FormulaParser.RULE_innerBlock) ||
+      x.symbol?.type === FormulaLexer.CATCHSTATEMENT ||
+      x.symbol?.type === FormulaLexer.ENDPREFIX ||
+      x.symbol?.type === FormulaLexer.ENDBLOCK
+    ));
     let hadBlock = false;
     for (let i = 0; i < potentialInnerBlocks.length; i++) {
-      if (potentialInnerBlocks[i] instanceof FormulaParser.InnerBlockContext) {
+      if (isRule(potentialInnerBlocks[i], FormulaParser.RULE_innerBlock)) {
         hadBlock = true;
         innerBlocks.push(convertToObject(potentialInnerBlocks[i], parser, source));
       } else {
@@ -847,25 +915,19 @@ tryCatch
         hadBlock = false;
       }
     }
-    
+
     current.children = innerBlocks;
 
-
+    let identNode = node.children.find(x => x.symbol?.type === FormulaLexer.IDENT);
     // @ts-ignore
-    current.children.push(new TreeNode(getNodeText(node.children.find(x => x?.symbol?.type === FormulaLexer.IDENT)), "IDENT", {
-      line: node.start.line,  
+    current.children.push(new TreeNode(identNode.symbol.text, "IDENT", {
+      line: node.start.line,
       source
     }));
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_assignment) {
-    /**
-     * assignment
-	   * :
-	   * IDENT '(' (IDENT  (EQUALS defaultValue | (',' IDENT )*) (',' IDENT EQUALS defaultValue )*)? ')' '<-' logicalExpression -> ^(FUNCTION ^(PARAMS IDENT*) ^(DEFAULTS defaultValue*) logicalExpression) |
-	   * (PRIMITIVE | assigned) (',' (PRIMITIVE | assigned))*  '<-' logicalExpression -> ^(ASSIGN PRIMITIVE* assigned* logicalExpression)
-	   * ;
-     */
-    if (getNodeText(node.children[1]) === "(") {
+    if (node.children[1].symbol?.type === FormulaLexer.LPAREN) {
       let current = new TreeNode("", "FUNCTION", {
         line: node.start.line,
         source
@@ -878,23 +940,26 @@ tryCatch
         line: node.start.line,
         source
       });
-      params.children.push(new TreeNode(getNodeText(node.children[0]), "IDENT", {
+      params.children.push(new TreeNode(node.children[0].symbol.text, "IDENT", {
         line: node.start.line,
         source
       }));
-      // set params and defaults
+
       for (let i = 2; i < node.children.length; i++) {
-        if (getNodeText(node.children[i]) === "<-") {
+        if (node.children[i].symbol?.type === FormulaLexer.ASSIGN) {
           break;
         }
-        if (getNodeText(node.children[i]) === "," || getNodeText(node.children[i]) === ")") {
+        if (
+          node.children[i].symbol?.type === FormulaLexer.COMMA ||
+          node.children[i].symbol?.type === FormulaLexer.RPAREN
+        ) {
           continue;
         }
-        params.children.push(new TreeNode(getNodeText(node.children[i]), "IDENT", {
+        params.children.push(new TreeNode(node.children[i].symbol.text, "IDENT", {
           line: node.start.line,
           source
         }));
-        if (getNodeText(node.children[i + 1]) === "=") {
+        if (node.children[i + 1].symbol?.type === FormulaLexer.EQUALS) {
           defaults.children.push(convertToObject(node.children[i + 2], parser, source));
           i += 2;
         }
@@ -907,37 +972,24 @@ tryCatch
         source
       });
       for (let i = 0; i < node.children.length; i++) {
-        if (getNodeText(node.children[i]) === ",") {
+        if (
+          node.children[i].symbol?.type === FormulaLexer.COMMA ||
+          node.children[i].symbol?.type === FormulaLexer.ASSIGN
+        ) {
           continue;
         }
-        if (getNodeText(node.children[i]) === "<-") {
-          continue;
-        }
-        // @ts-ignore
-        if (node.children[i].symbol?.type === FormulaLexer.PRIMITIVE) {
-          current.children.push(new TreeNode(getNodeText(node.children[i]), "PRIMITIVE", {
-            // @ts-ignore
-            line: node.children[i].symbol.line,
-            source
-          }));
-        } else {
-          current.children.push(convertToObject(node.children[i], parser, source));
-        }
+        current.children.push(convertToObject(node.children[i], parser, source));
       }
       return current;
     }
+
   } else if (ruleIndex === FormulaParser.RULE_assigned) {
-    /**
-     * assigned 
-	   * : IDENT selector? -> ^(ASSIGNED IDENT selector?)
-	   * ;
-     */
     let current = new TreeNode("", "ASSIGNED", {
       line: node.start.line,
       source
     });
     current.children = [
-      new TreeNode(getNodeText(node.children[0]), "IDENT", {
+      new TreeNode(node.children[0].symbol.text, "IDENT", {
         line: node.start.line,
         source
       })
@@ -946,19 +998,19 @@ tryCatch
       current.children.push(convertToObject(node.children[i], parser, source));
     }
     return current;
-    
+
   } else if (ruleIndex === FormulaParser.RULE_string) {
-    let current = new TreeNode(getNodeText(node), "STRING", {
+    return new TreeNode(node.children[0].symbol.text, "STRING", {
       line: node.start.line,
       source
     });
-    return current;
+
   } else if (ruleIndex === FormulaParser.RULE_innerPrimaryExpression) {
     let current = new TreeNode("", "INNER", {
       line: node.start.line,
       source
     });
-    if (node.children[0] instanceof FormulaParser.SelectionExpressionContext) {
+    if (isRule(node.children[0], FormulaParser.RULE_selectionExpression)) {
       let selectionExpression = /** @type {any} */ (node.children[0]);
       current.children.push(convertToObject(selectionExpression.children[0], parser, source));
       for (let i = 1; i < selectionExpression.children.length; i++) {
@@ -970,31 +1022,26 @@ tryCatch
       }
     }
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_primaryExpression) {
-    if (getNodeText(node.children[0]) === "(") {
+    if (node.children[0].symbol?.type === FormulaLexer.LPAREN) {
       return convertToObject(node.children[1], parser, source);
     }
     return convertToObject(node.children[0], parser, source);
+
   } else if (ruleIndex === FormulaParser.RULE_selector) {
-    /**
-     * 
-     * selector
-	   * : (minarray | dotselector) -> ^(SELECTOR minarray? dotselector?)
-	   *;
-     */
     let current = new TreeNode("", "SELECTOR", {
       line: node.start.line,
       source
     });
-    if (node.children[0] instanceof FormulaParser.MinarrayContext) {
+    if (isRule(node.children[0], FormulaParser.RULE_minarray)) {
       let minArray = /** @type {any} */ (node.children[0]);
       for (let i = 1; i < minArray.children.length - 1; i++) {
-        if (getNodeText(minArray.children[i]) === ",") {
+        if (minArray.children[i].symbol?.type === FormulaLexer.COMMA) {
           continue;
         }
-        // support MULT
-        if (getNodeText(minArray.children[i]) === "*") {
-          current.children.push(new TreeNode(getNodeText(minArray.children[i]), "MULT", {
+        if (minArray.children[i].symbol?.type === FormulaLexer.MULT) {
+          current.children.push(new TreeNode(minArray.children[i].symbol.text, "MULT", {
             line: minArray.children[i].symbol.line,
             source
           }));
@@ -1007,118 +1054,73 @@ tryCatch
       current.children = [convertToObject(node.children[0], parser, source)];
     }
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_dotselector) {
-    /**
-     * dotselector
-	   * ('.' arrayName)+ -> ^(DOTSELECTOR arrayName+)
-	   * ;
-     */
     let current = new TreeNode("", "DOTSELECTOR", {
       line: node.start.line,
       source
     });
     for (let i = 0; i < node.children.length; i++) {
-      if (getNodeText(node.children[i]) === ".") {
+      if (node.children[i].symbol?.type === FormulaLexer.DOT) {
         continue;
       }
       current.children.push(convertToObject(node.children[i], parser, source));
     }
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_arrayName) {
-    // Handle: IDENT STRING or MULT
-    // @ts-ignore
     let token = node.children[0];
-    // @ts-ignore
-    let symbol = token.symbol;
-
-    let newNode = null;
-    if (symbol.type === FormulaLexer.STRING) {
-      newNode = new TreeNode(token.getText(), "STRING", {
-        line: symbol.line,
-        source
-      });
-    } else if (symbol.type === FormulaLexer.IDENT) {
-      newNode = new TreeNode(token.getText(), "IDENT", {
-        line: symbol.line,
-        source
-      });
-    } else if (symbol.type === FormulaLexer.MULT) {
-      newNode = new TreeNode(token.getText(), "MULT", {
-        line: symbol.line,
-        source
-      });
-    } else {
-      console.error(symbol);
-      throw new Error("Invalid type - dotselector");
+    const simple = convertSimpleTerminalNode(token, source, node.start.line);
+    if (simple) {
+      return simple;
     }
+    throw new Error("Invalid type - arrayName");
 
-    return newNode;
   } else if (ruleIndex === FormulaParser.RULE_funCall) {
-    // ['(', a, ',', b, ',', c, ..., ')']
     let current = new TreeNode("", "FUNCALL", {
       line: node.start.line,
       source
     });
     for (let i = 1; i < node.children.length - 1; i++) {
-      if (getNodeText(node.children[i]) === ",") {
+      if (node.children[i].symbol?.type === FormulaLexer.COMMA) {
         continue;
       }
       current.children.push(convertToObject(node.children[i], parser, source));
     }
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_material) {
-    // ['{', additive, unitMultiplicativeExpression, '}']
-    let current = new TreeNode(getNodeText(node), "MATERIAL", {
+    let current = new TreeNode(node.getText(), "MATERIAL", {
       line: node.start.line,
       source
     });
     current.children = [convertToObject(node.children[2], parser, source), convertToObject(node.children[1], parser, source)];
     return current;
+
   } else if (ruleIndex === FormulaParser.RULE_unitMultiplicativeExpression) {
-    /**
-     * unitMultiplicativeExpression 
-	   * :	unitInnerMultiplicativeExpression ( PER^ unitInnerMultiplicativeExpression ) *
-	   * ;
-     */
     if (node.children.length > 1) {
-      // [left, ('per', right)*]
-      return flatChildrenToTreeLeft(node, (op) => {
+      return flatChildrenToTreeLeft(node, () => {
         return new TreeNode("", "PER", {
-          // @ts-ignore
-          line: (op.start || op.symbol).line,
+          line: node.start.line,
           source
         });
       }, parser, source);
     }
 
   } else if (ruleIndex === FormulaParser.RULE_unitInnerMultiplicativeExpression) {
-    /**
-     * unitInnerMultiplicativeExpression 
-	   * :	unitClump ( (MULT|DIV)^ unitClump ) *
-     *	;
-     */
     if (node.children.length > 1) {
-      // [left, '*'|'/', right]
       return flatChildrenToTreeLeft(node, (op) => {
-        let operator = getNodeText(op);
-        return new TreeNode("", operator === "*" ? "MULT" : "DIV", {
-          // @ts-ignore
-          line: (op.start || op.symbol).line,
+        let token = /** @type {{ symbol: { type: number }, start?: { line?: number } }} */ (op);
+        let type = token.symbol.type;
+        return new TreeNode("", type === FormulaLexer.MULT ? "MULT" : "DIV", {
+          line: token.start?.line,
           source
         });
       }, parser, source);
     }
-  } else if (ruleIndex === FormulaParser.RULE_unitPowerExpression) {
-    /**
-     * unitPowerExpression 
-	   * :	 unit ( POW^ MINUS? (INTEGER|FLOAT) )* 
-	   * ;
-     */
-    if (node.children.length > 1) {
-      // [left, '^', '-' right]
 
-     
-      
+  } else if (ruleIndex === FormulaParser.RULE_unitPowerExpression) {
+    if (node.children.length > 1) {
       let children = /** @type {any} */ (node.children.slice());
       let isFirst = true;
       while (children.length > 1) {
@@ -1127,18 +1129,18 @@ tryCatch
         let minus;
         let right;
         let minusOrRight = children.shift();
-        if (getNodeText(minusOrRight) === "-") {
+        if (minusOrRight.symbol?.type === FormulaLexer.MINUS) {
           minus = minusOrRight;
           right = children.pop();
         } else {
           right = minusOrRight;
         }
-        let current =  new TreeNode("", "POW", {
+        let current = new TreeNode("", "POW", {
           // @ts-ignore
           line: (operator.start || operator.symbol).line,
           source
         });
-        current.children = [isFirst ? convertToObject(left, parser, source) : left, new TreeNode(getNodeText(right), "FLOAT", {
+        current.children = [isFirst ? convertToObject(left, parser, source) : left, new TreeNode(right.symbol.text, "FLOAT", {
           line: right.symbol.line,
           source
         })];
@@ -1153,17 +1155,10 @@ tryCatch
         isFirst = false;
       }
       return children[0];
-  
     }
 
   } else if (ruleIndex === FormulaParser.RULE_unitClump) {
-    /**
-     * unitClump
-	   * :	(INTEGER DIV) unitPowerExpression CUBED? SQUARED? -> ^(UNITCLUMP unitPowerExpression NEGATE CUBED* SQUARED*)
-		| unitPowerExpression CUBED? SQUARED? -> ^(UNITCLUMP unitPowerExpression CUBED* SQUARED*)
-	   * ;
-     */
-    if (Number.isInteger(+getNodeText(node.children[0]))) {
+    if (node.children[0].symbol?.type === FormulaLexer.INTEGER) {
       let current = new TreeNode("", "UNITCLUMP", {
         line: node.start.line,
         source
@@ -1173,12 +1168,12 @@ tryCatch
         source
       })];
       for (let i = 3; i < node.children.length; i++) {
-        if (getNodeText(node.children[i]).toLowerCase() === "cubed") {
+        if (node.children[i].symbol?.type === FormulaLexer.CUBED) {
           current.children.push(new TreeNode("", "CUBED", {
             line: node.start.line,
             source
           }));
-        } else if (getNodeText(node.children[i]).toLowerCase() === "squared") {
+        } else if (node.children[i].symbol?.type === FormulaLexer.SQUARED) {
           current.children.push(new TreeNode("", "SQUARED", {
             line: node.start.line,
             source
@@ -1194,29 +1189,23 @@ tryCatch
       current.children = [convertToObject(node.children[0], parser, source)];
 
       for (let i = 1; i < node.children.length; i++) {
-        if (getNodeText(node.children[i]).toLowerCase() === "cubed") {
+        if (node.children[i].symbol?.type === FormulaLexer.CUBED) {
           current.children.push(new TreeNode("", "CUBED", {
             line: node.start.line,
             source
           }));
-        } else if (getNodeText(node.children[i]).toLowerCase() === "squared") {
+        } else if (node.children[i].symbol?.type === FormulaLexer.SQUARED) {
           current.children.push(new TreeNode("", "SQUARED", {
             line: node.start.line,
             source
           }));
         }
-
       }
       return current;
     }
 
   } else if (ruleIndex === FormulaParser.RULE_unit) {
-    /**
-     * unit	:	IDENT (IDENT)* -> ^(UNIT IDENT+)
-		 * | '(' unitMultiplicativeExpression ')'	-> ^(UNITCLUMP unitMultiplicativeExpression)
-     * ;
-     */
-    if (getNodeText(node.children[0]) === "(") {
+    if (node.children[0].symbol?.type === FormulaLexer.LPAREN) {
       let current = new TreeNode("", "UNITCLUMP", {
         line: node.start.line,
         source
@@ -1224,44 +1213,48 @@ tryCatch
       current.children = [convertToObject(node.children[1], parser, source)];
       return current;
     } else {
-      let current = new TreeNode("", "UNIT", {
-        line: node.start.line,
-        source
-      });
-      for (let i = 0; i < node.children.length; i++) {
-        let token = node.children[i];
-        // @ts-ignore
-        let symbol = token.symbol;
-        current.children.push( new TreeNode(token.getText(), "IDENT", {
-          line: symbol.line,
-          source
-        }));
-      }
-      return current;
+      return convertToObject(node.children[0], parser, source);
     }
-    
-    
+
+  } else if (ruleIndex === FormulaParser.RULE_unitRef) {
+    let current = new TreeNode("", "UNIT", {
+      line: node.start.line,
+      source
+    });
+    for (let i = 0; i < node.children.length; i++) {
+      let token = node.children[i];
+      // @ts-ignore
+      let symbol = token.symbol;
+      if (!symbol) {
+        continue;
+      }
+      current.children.push(new TreeNode(symbol.text, "IDENT", {
+        line: symbol.line,
+        source
+      }));
+    }
+    return current;
 
   } else if (ruleIndex === FormulaParser.RULE_array) {
-    /**
-     * array
-	   * : 
-	   * LCURL NEWLINE* (label NEWLINE*(',' NEWLINE* label NEWLINE*)*)? NEWLINE* RCURL -> ^(ARRAY label*)
-	   * ;
-     */
-    // ['{' label (',', label)*, '}']
     let current = new TreeNode("", "ARRAY", {
       line: node.start.line,
       source
     });
     for (let i = 1; i < node.children.length - 1; i++) {
-      if (getNodeText(node.children[i]) === "{" || getNodeText(node.children[i]) === "," || getNodeText(node.children[i]) === "\n" || getNodeText(node.children[i]) === "\r\n" || getNodeText(node.children[i]) === "}") {
+      if (
+        node.children[i].symbol?.type === FormulaLexer.LCURL ||
+        node.children[i].symbol?.type === FormulaLexer.COMMA ||
+        node.children[i].symbol?.type === FormulaLexer.NEWLINES ||
+        node.children[i].symbol?.type === FormulaLexer.RCURL ||
+        node.children[i].symbol?.type === FormulaLexer.LARR ||
+        node.children[i].symbol?.type === FormulaLexer.RARR
+      ) {
         continue;
       }
-      if (node.children[i] instanceof FormulaParser.LabelContext) {
+      if (isRule(node.children[i], FormulaParser.RULE_label)) {
         current.children.push(convertToObject(node.children[i], parser, source));
       } else {
-        current.children.push(new TreeNode(getNodeText(node), "LABEL", {
+        current.children.push(new TreeNode("", "LABEL", {
           line: node.start.line,
           source
         }, [convertToObject(node.children[i], parser, source)]));
@@ -1269,20 +1262,14 @@ tryCatch
     }
 
     return current;
-  }  else if (ruleIndex === FormulaParser.RULE_label) {
-    /**
-     * label	:	
-	   * (arrayName NEWLINE* COLON)? NEWLINE* logicalExpression -> ^(LABEL logicalExpression arrayName?)
-	   *;
-    */
 
-    let current = new TreeNode(getNodeText(node), "LABEL", {
+  } else if (ruleIndex === FormulaParser.RULE_label) {
+    let current = new TreeNode(node.getText(), "LABEL", {
       line: node.start.line,
       source
     });
     let children = node.children.slice();
-    // filter newlines
-    children = children.filter(child => getNodeText(child) !== "\n" && getNodeText(child) !== "\r\n");
+    children = children.filter(child => child.symbol?.type !== FormulaLexer.NEWLINES);
     if (children.length === 1) {
       current.children = [convertToObject(children[0], parser, source)];
     } else {
@@ -1295,7 +1282,6 @@ tryCatch
     return convertToObject(node.children[0], parser, source);
   }
 
-  // shouldn't reach here
   throw new ModelError("Unknown invalid equation syntax", {
     code: 9002
   });
@@ -1517,7 +1503,7 @@ funcEvalMap["EQUALS"] = function (node, scope, simulate) {
  * @param {ValueType|string|number} rhs
  * @param {TreeNode=} lhsNode
  * @param {TreeNode=} rhsNode
- * @param {boolean=} allowVectorReturn 
+ * @param {boolean=} allowVectorReturn
  * @returns {boolean}
  */
 export function eq(lhs, rhs, lhsNode, rhsNode, allowVectorReturn=false) {
@@ -1656,7 +1642,7 @@ export function lessThanEq(lhs, rhs, lhsNode, rhsNode) {
     return rhs.cloneCombine(lhs, lessThanEq, true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
 
-  
+
     let scale = 1;
     if (lhs.units !== rhs.units) {
       scale = convertUnits(rhs.units, lhs.units);
@@ -1775,7 +1761,8 @@ funcEvalMap["PLUS"] = function (node, scope, simulate) {
     toNum(evaluateNode(node.children[0], scope, simulate)),
     toNum(evaluateNode(node.children[1], scope, simulate)),
     node.children[0],
-    node.children[1]
+    node.children[1],
+    simulate
   );
 };
 
@@ -1788,14 +1775,15 @@ funcEvalMap["PLUS"] = function (node, scope, simulate) {
  * @param {R} rhs
  * @param {TreeNode=} lhsNode
  * @param {TreeNode=} rhsNode
+ * @param {import("../Simulator").Simulator=} simulate
  *
  * @returns {L extends Vector ? Vector : (R extends Vector ? Vector : (L extends string ? string: (R extends string ? string : Material)))}
  */
-export function plus(lhs, rhs, lhsNode, rhsNode) {
+export function plus(lhs, rhs, lhsNode, rhsNode, simulate) {
   if (lhs instanceof Vector) {
-    return lhs.cloneCombine(rhs, plus, false);
+    return lhs.cloneCombine(rhs, (a, b) => plus(a, b, lhsNode, rhsNode, simulate), false);
   } else if (rhs instanceof Vector) {
-    return rhs.cloneCombine(lhs, plus, true);
+    return rhs.cloneCombine(lhs, (a, b) => plus(a, b, lhsNode, rhsNode, simulate), true);
   } else if (lhs instanceof Material && rhs instanceof Material) {
 
     let explicitUnits = true;
@@ -1812,7 +1800,7 @@ export function plus(lhs, rhs, lhsNode, rhsNode) {
     return /** @type {any} */ (new Material(
       fn["+"](lhs.value, scale === 1 ? rhs.value : fn["*"](rhs.value, scale)),
       lhs.units,
-      explicitUnits && lhs.explicitUnits && rhs.explicitUnits 
+      explicitUnits && lhs.explicitUnits && rhs.explicitUnits
     ));
   }
 
@@ -1829,7 +1817,12 @@ export function plus(lhs, rhs, lhsNode, rhsNode) {
   }
   if (typeof lhs === "string" || lhs instanceof String || typeof rhs === "string" || rhs instanceof String) {
     let s = lhs.toString() + rhs.toString();
-    return /** @type {any} */ (s);
+    if (!simulate) {
+      throw new ModelError("Attempted to concatenate in an invalid context.", {
+        code: 7014
+      });
+    }
+    return /** @type {any} */ (stringify(s, simulate));
   }
 
   throw new ModelError("Invalid type - plus", {
@@ -1887,7 +1880,7 @@ export function minus(lhs, rhs, lhsNode, rhsNode) {
     return /** @type {any} */ (new Material(
       fn["-"](lhs.value, scale === 1 ? rhs.value : fn["*"](rhs.value, scale)),
       lhs.units,
-      explicitUnits && lhs.explicitUnits && rhs.explicitUnits 
+      explicitUnits && lhs.explicitUnits && rhs.explicitUnits
     ));
   }
 
@@ -1946,13 +1939,13 @@ export function mult(lhs, rhs) {
         return /** @type {any} */ (new Material(
           x,
           newUnits,
-          explicit && lhs.explicitUnits && rhs.explicitUnits 
+          explicit && lhs.explicitUnits && rhs.explicitUnits
         ));
       } else {
         return /** @type {any} */ (new Material(
           fn["*"](x, scale),
           newUnits,
-          explicit && lhs.explicitUnits && rhs.explicitUnits 
+          explicit && lhs.explicitUnits && rhs.explicitUnits
         ));
       }
     } else if (lhs.units) {
@@ -2018,13 +2011,13 @@ export function div(lhs, rhs) {
         return /** @type {any} */ (new Material(
           x,
           newUnits,
-          explicit && lhs.explicitUnits && rhs.explicitUnits 
+          explicit && lhs.explicitUnits && rhs.explicitUnits
         ));
       } else {
         return /** @type {any} */ (new Material(
           fn["*"](x, scale),
           newUnits,
-          explicit && lhs.explicitUnits && rhs.explicitUnits 
+          explicit && lhs.explicitUnits && rhs.explicitUnits
         ));
       }
     } else if (lhs.units) {
@@ -2197,13 +2190,13 @@ funcEvalMap["IDENT"] = function (node, scope, simulate) {
   let varName = node.text;
 
   while (!scope.has(varName)) {
-    if (scope.get(PARENT_SYMBOL)) {
-      scope = scope.get(PARENT_SYMBOL);
-    } else {
+    let parent = scope.get(PARENT_SYMBOL);
+    if (!parent) {
       throw new ModelError(`The variable or function "${node.origText}" does not exist.`, {
         code: 7038
       });
     }
+    scope = parent;
   }
 
   let v = scope.get(varName);
@@ -2655,7 +2648,7 @@ funcEvalMap["TRYCATCH"] = function (node, scope, simulate) {
   try {
     return evaluateNode(node.children[0], scope, simulate);
   } catch (err) {
-    
+
     /** @type {Map} */
     let localScope = new Map([[ PARENT_SYMBOL, scope ]]);
     if (err instanceof ModelError) {
@@ -2674,7 +2667,7 @@ funcEvalMap["TRYCATCH"] = function (node, scope, simulate) {
  */
 funcEvalMap["WHILE"] = function (node, scope, simulate) {
   let lastResult = new Material(0);
-  
+
   let innerScope = new Map([[ PARENT_SYMBOL, scope ]]);
   while (trueValue(toNum(evaluateNode(node.children[0], scope, simulate)))) {
     lastResult = evaluateNode(node.children[1], innerScope, simulate);
@@ -2688,7 +2681,7 @@ funcEvalMap["WHILE"] = function (node, scope, simulate) {
  * @param {import("../Simulator").Simulator} simulate
  */
 funcEvalMap["IFTHENELSE"] = function (node, scope, simulate) {
-  
+
   let innerScope = new Map([[ PARENT_SYMBOL, scope ]]);
   let i;
   for (i = 0; i < node.children[0].children.length; i++) {
@@ -2712,7 +2705,7 @@ funcEvalMap["FORIN"] = function (node, scope, simulate) {
   let lastResult = new Material(0);
   let id = node.children[0].text;
 
-  
+
   let innerScope = new Map([[ PARENT_SYMBOL, scope ]]);
   let vec = evaluateNode(node.children[1], scope, simulate);
   if (!(vec instanceof Vector)) {
@@ -2736,16 +2729,42 @@ funcEvalMap["FOR"] = function (node, scope, simulate) {
   let lastResult = new Material(0);
   let id = node.children[0].text;
   let start = toNum(evaluateNode(node.children[1].children[0], scope, simulate));
-  let by = new Material(1);
+  if (!(start instanceof Material)) {
+    throw new ModelError("The start value of a For loop must be a number.", {
+      code: 7068
+    });
+  }
+
+  let by = new Material(1, start.units);
 
   if (node.children[1].children.length === 3) {
     by = toNum(evaluateNode(node.children[1].children[2], scope, simulate));
+  }
+  if (!(by instanceof Material)) {
+    throw new ModelError("The step size of a For loop must be a number.", {
+      code: 7069
+    });
+  }
+  if (by.value === 0) {
+    throw new ModelError("The step size of a For loop must not be 0.", {
+      code: 7070
+    });
   }
   /** @type {Map} */
   let innerScope = new Map([[ PARENT_SYMBOL, scope ]]);
 
   innerScope.set(id, start);
-  while (fn[by.value >= 0 ? "<=" : ">="](innerScope.get(id).value, toNum(evaluateNode(node.children[1].children[1], scope, simulate)))) {
+  let compare = by.value > 0 ? lessThanEq : greaterThanEq;
+  while (true) {
+    let end = toNum(evaluateNode(node.children[1].children[1], scope, simulate));
+    if (!(end instanceof Material)) {
+      throw new ModelError("The end value of a For loop must be a number.", {
+        code: 7071
+      });
+    }
+    if (!compare(innerScope.get(id), end, node.children[1].children[0], node.children[1].children[1])) {
+      break;
+    }
     lastResult = evaluateNode(node.children[2], innerScope, simulate);
     innerScope.set(id, plus(innerScope.get(id), by));
   }
@@ -3176,7 +3195,7 @@ trimEvalMap["PLUS"] = function (node, scope, simulate) {
   let lhs = trimNode(node.children[0], scope, simulate);
   let rhs = trimNode(node.children[1], scope, simulate);
   if (isConst(lhs) && isConst(rhs)) {
-    return plus(lhs, rhs, lhs, rhs);
+    return plus(lhs, rhs, lhs, rhs, simulate);
   } else {
     let n = new TreeNode(node.origText, node.typeName, node.position);
     n.children = [lhs, rhs];
@@ -3216,12 +3235,12 @@ trimEvalMap["PRIMITIVE"] = function (node, scope) {
     res = new PrimitiveStore(scope.get(node.text.slice(1, node.text.length - 1)), "object");
   }
   if (res.primitive === undefined) {
-    throw new ModelError(`The primitive <i>${toHTML(node.origText)}</i> could not be found.`, {
+    throw new ModelError(`The primitive <i>${sanitizeText(node.origText)}</i> could not be found.`, {
       code: 7056
     });
   }
   if (res.primitive === DUPLICATE_PRIMITIVE_NAMES) {
-    throw new ModelError(`The primitive name <i>${toHTML(node.origText)}</i> is ambiguous and could refer to multiple primitives.`, {
+    throw new ModelError(`The primitive name <i>${sanitizeText(node.origText)}</i> is ambiguous and could refer to multiple primitives.`, {
       code: 7067
     });
   }

@@ -515,20 +515,20 @@ export class Container extends Primitive {
      */
     Population(config?: PrimitiveConfig & PopulationConfig): Population;
     /**
-     * @param {Stock | null} start
-     * @param {Stock | null} end
+     * @param {Stock|null} start
+     * @param {Stock|null} end
      * @param {(PrimitiveConfig & ValuedConfig & FlowConfig)=} config
      */
     Flow(start: Stock | null, end: Stock | null, config?: (PrimitiveConfig & ValuedConfig & FlowConfig) | undefined): Flow;
     /**
-     * @param {State | null} start
-     * @param {State | null} end
+     * @param {State|null} start
+     * @param {State|null} end
      * @param {(PrimitiveConfig & TransitionConfig)=} config
      */
     Transition(start: State | null, end: State | null, config?: (PrimitiveConfig & TransitionConfig) | undefined): Transition;
     /**
-     * @param {Primitive | null} start
-     * @param {Primitive | null} end
+     * @param {Primitive|null} start
+     * @param {Primitive|null} end
      * @param {(PrimitiveConfig & LinkConfig)=} config
      */
     Link(start: Primitive | null, end: Primitive | null, config?: (PrimitiveConfig & LinkConfig) | undefined): Link;

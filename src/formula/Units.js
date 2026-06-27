@@ -1,4 +1,4 @@
-import { toHTML } from "../Utilities.js";
+import { sanitizeText } from "../Utilities.js";
 import { fn } from "../CalcMap.js";
 
 
@@ -101,19 +101,19 @@ export class UnitStore {
 
   /**
    * Also check if the units would simplify to unitless.
-   * 
-   * @returns 
+   *
+   * @returns
    */
   isDeepUnitless() {
     if (this.isUnitless()) {
       return true;
     }
-  
+
     this.addBase();
-  
+
     return !this.baseUnits.exponents.find(x => x !== 0);
   }
-  
+
   addBase() {
     if (this.toBase !== null) {
       return;
@@ -204,7 +204,7 @@ export class UnitStore {
     if (!cache.has(rhs)) {
       let lhsUnits = /** @type {UnitStore} */ (this);
       let rhsUnits = rhs;
-      
+
       let lhsNames = null;
       let lhsExponents = null;
       let rhsNames = null;
@@ -241,7 +241,7 @@ export class UnitStore {
         cache.set(rhs, [1, lhsUnits, true]);
         return cache.get(rhs);
       }
-      
+
       if (lhsUnits.toBase === null) {
         lhsUnits.addBase();
       }
@@ -269,7 +269,7 @@ export class UnitStore {
         cache.set(rhs, [1, newUnits, true]);
         return cache.get(rhs);
       }
-      
+
 
 
       let names;
@@ -333,7 +333,7 @@ export class UnitStore {
       denItems = 0;
     for (let i = 0; i < this.names.length; i++) {
       if (this.names[i] !== "") {
-        let item = "<span class=\"unit\">" + toHTML(toTitleCase(this.names[i])) + "</span>";
+        let item = "<span class=\"unit\">" + sanitizeText(toTitleCase(this.names[i])) + "</span>";
         if (this.exponents[i] !== 1 && this.exponents[i] !== -1) {
           item = item + "<span class='markup'>^</span><sup>" + Math.abs(this.exponents[i]) + "</sup>";
         }

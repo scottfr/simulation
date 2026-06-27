@@ -17,7 +17,7 @@ export class ParseError {
     constructor(message: string, locator: any | null);
     message: string;
     locator: any;
-    name: any;
+    name: string;
 }
 export function XMLReader(): void;
 export class XMLReader {

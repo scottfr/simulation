@@ -9,8 +9,8 @@ export class SimulationError extends Error {
         line?: number;
         code: number;
     });
-    source: string;
+    source: string | undefined;
     primitive: any;
-    line: number;
+    line: number | undefined;
     code: number;
 }

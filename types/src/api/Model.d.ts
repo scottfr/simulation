@@ -31,6 +31,7 @@ export class Model {
     /** @type {string} */
     description: string;
     visualizations: any[];
+    scenarios: any[];
     _graph: ModelNode;
     settings: ModelNode;
     p: Function;

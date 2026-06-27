@@ -110,7 +110,7 @@ export class Simulator {
     ids: {
         [x: string]: number;
     };
-    timeToStateMapping: any;
+    timeToStateMapping: Map<any, any>;
     idCount: number;
     stochastic: boolean;
     /** @type {number} */
@@ -125,9 +125,9 @@ export class Simulator {
         source: string;
     };
     /** @type {Map<import("./formula/Formula.js").PARENT_SYMBOL|string, any>} */
-    coreBank: Map<any | string, any>;
+    coreBank: Map<typeof PARENT_SYMBOL | string, any>;
     /** @type {Map<import("./formula/Formula.js").PARENT_SYMBOL|string, any>} */
-    varBank: Map<any | string, any>;
+    varBank: Map<typeof PARENT_SYMBOL | string, any>;
     unitManager: UnitManager;
     /** @type {function} */
     random: Function;
@@ -144,26 +144,26 @@ export class Simulator {
      * @param {import('./Modeler').ModelType} model
      */
     setup(model: import("./Modeler").ModelType): void;
-    simulationModel: import("./Modeler.js").ModelType;
-    solversCompletedFirstPass: number;
-    timeStart: Material;
-    timeLength: Material;
-    timePause: Material;
-    timeEnd: Material;
-    timeStep: Material;
-    userTimeStep: Material;
-    timeStepCount: number;
-    timeUnits: import("./formula/Units.js").UnitStore;
+    simulationModel: import("./Modeler.js").ModelType | undefined;
+    solversCompletedFirstPass: number | undefined;
+    timeStart: Material | undefined;
+    timeLength: Material | undefined;
+    timePause: Material | undefined;
+    timeEnd: Material | undefined;
+    timeStep: Material | undefined;
+    userTimeStep: Material | undefined;
+    timeStepCount: number | undefined;
+    timeUnits: import("./formula/Units.js").UnitStore | undefined;
     /** @type {Map<string, import("./AggregateSeries").AggregateSeries>} */
-    aggregateSeries: Map<string, import("./AggregateSeries").AggregateSeries>;
-    tasks: TaskQueue;
+    aggregateSeries: Map<string, import("./AggregateSeries").AggregateSeries> | undefined;
+    tasks: TaskQueue | undefined;
     /**
      * @param {string} x
      * @returns {number}
      */
     getID(x: string): number;
     time(): Material;
-    timeProgressed(): Material;
+    timeProgressed(): Material | Vector<any>;
     /**
      * @param {SPrimitive[]} valued
      * @param {SPrimitive[]} displayed
@@ -174,20 +174,20 @@ export class Simulator {
      */
     step(solver: SolverType): void;
     sleep(shouldUpdateValues: any): void;
-    shouldSleep: boolean;
+    shouldSleep: boolean | undefined;
     shouldUpdateValues: any;
-    resume(): ResultsType;
+    resume(): ResultsType | undefined;
     completed(): boolean;
     terminate(): void;
-    terminated: boolean;
+    terminated: boolean | undefined;
     setStatus(s: any): void;
     /**
      * @param {import("./Modeler").SimulationConfigType=} config
      * @returns
      */
-    run(config?: import("./Modeler").SimulationConfigType | undefined): ResultsType;
-    wakeUpTime: number;
-    progress(): number;
+    run(config?: import("./Modeler").SimulationConfigType | undefined): ResultsType | undefined;
+    wakeUpTime: number | undefined;
+    progress(): any;
     /**
      * @param {SPrimitive[]} displayed
      */
@@ -282,5 +282,7 @@ export type DisplayInformationType = {
 };
 import { SPrimitive } from "./Primitives.js";
 import { Material } from "./formula/Material.js";
+import { PARENT_SYMBOL } from "./formula/Formula.js";
 import { UnitManager } from "./formula/Units.js";
 import { TaskQueue } from "./TaskScheduler.js";
+import { Vector } from "./formula/Vector.js";

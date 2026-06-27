@@ -1,6 +1,6 @@
 {
   "name": "simulation",
-  "version": "8.0.0",
+  "version": "9.0.0",
   "author": "Scott Fortmann-Roe",
   "license": "AGPL",
   "description": "simulation is a multi-method simulation package for physical or social systems. Use it to create models for the environment, business, or other domains.",
@@ -23,7 +23,7 @@
     }
   },
   "scripts": {
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test": "vitest run",
     "build-d-ts": "( test ! -d types || rm -r types ) && npx -p typescript tsc -p tsconfig.types.json"
   }
 }

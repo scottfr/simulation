@@ -6,7 +6,7 @@ import { Task } from "./TaskScheduler.js";
 import { Rand, RandExp } from "./formula/Rand.js";
 import { Vector } from "./formula/Vector.js";
 import { ModelError } from "./formula/ModelError.js";
-import { toHTML } from "./Utilities.js";
+import { sanitizeText } from "./Utilities.js";
 import { stringify } from "./formula/Utilities.js";
 import Big from "../vendor/bigjs/big.js";
 import { fn } from "./CalcMap.js";
@@ -65,7 +65,7 @@ export class SPrimitive {
 
     this.parent = simulate.coreBank.get("primitivebase");
   }
-  
+
 
   orig() {
     return this.neighborProxyPrimitive || this;
@@ -91,7 +91,7 @@ export class SPrimitive {
 
     if ((this instanceof SFlow) && this.dna.flowUnitless) {
       timer = fn["*"](timer || 1, this.simulate.timeUnits.toBase);
-    } 
+    }
 
     if (!this.dna.units) {
       if (u.isDeepUnitless()) {
@@ -135,15 +135,13 @@ export class SPrimitive {
 
     }
 
-    p.cachedValue = this.cachedValue ? this.cachedValue.fullClone() : this.cachedValue;
+    p.cachedValue = this.cachedValue?.fullClone ? this.cachedValue.fullClone() : this.cachedValue;
 
     this.innerClone(p);
 
     return p;
   }
 
-
-  // eslint-disable-next-line
   innerClone(_p) { }
 
   clearCached() {
@@ -173,7 +171,7 @@ export class SPrimitive {
    * @return {ValueType}
    */
   calculateValue() {
-    throw new ModelError(`<i>[${toHTML(this.dna.name)}]</i> does not have a value and can not be used as a value in an equation.`, {
+    throw new ModelError(`<i>[${sanitizeText(this.dna.name)}]</i> does not have a value and can not be used as a value in an equation.`, {
       code: 1080
     });
   }
@@ -183,7 +181,7 @@ export class SPrimitive {
   }
 
   /**
-   * @param {Material} length
+   * @param {Material=} length
    *
    * @return {ValueType[]}
    */
@@ -198,13 +196,13 @@ export class SPrimitive {
 
     let res;
     if (length === undefined) {
-      res = items.map(x => x.fullClone());
+      res = items.map(x => x.fullClone ? x.fullClone() : x);
     } else {
       let bins = Math.ceil(div(length.forceUnits(this.simulate.timeUnits), this.dna.solver.userTimeStep).value);
 
       res = [];
       for (let i = Math.max(0, items.length - 1 - bins); i < items.length; i++) {
-        res.push(items[i].fullClone());
+        res.push(items[i].fullClone ? items[i].fullClone() : items[i]);
       }
     }
 
@@ -236,19 +234,20 @@ export class SPrimitive {
       // prior to when we have data, use the default
       if (defaultValue === null) {
         if (this.pastValues.length > 0) {
-          return this.pastValues[0].fullClone();
+          return this.pastValues[0].fullClone ? this.pastValues[0].fullClone() : this.pastValues[0];
         } else {
           return this.value();
         }
       } else {
-        return defaultValue;
+        return defaultValue.fullClone ? defaultValue.fullClone() : defaultValue;
       }
     }
 
 
     if (periods === Math.round(periods)) {
       // we have an exact value get it
-      return this.pastValues[this.pastValues.length - periods].fullClone();
+      let x = this.pastValues[this.pastValues.length - periods];
+      return x.fullClone ? x.fullClone() : x;
     }
 
 
@@ -262,6 +261,7 @@ export class SPrimitive {
       firstPeriod = this.pastValues[this.pastValues.length - entry];
     }
     secondPeriod = this.pastValues[this.pastValues.length - 1 - entry];
+
     return plus(mult(firstPeriod, new Material(1 - fraction)), mult(secondPeriod, new Material(fraction)));
   }
 
@@ -297,7 +297,7 @@ export class SPrimitive {
     }
 
     if (!this.dna.units && m.units && !m.units.isUnitless()) {
-      throw new ModelError(`Wrong units generated for <i>[${toHTML(this.dna.name)}]</i>. Expected no units and got <i>${m.units.toString()}</i>. Either specify units for the primitive or adjust the equation.`, {
+      throw new ModelError(`Wrong units generated for <i>[${sanitizeText(this.dna.name)}]</i>. Expected no units and got <i>${m.units.toString()}</i>. Either specify units for the primitive or adjust the equation.`, {
         primitive: this.orig(),
         showEditor: true,
         code: 1081
@@ -307,7 +307,7 @@ export class SPrimitive {
         if (!this.dna.units) {
           return;
         }
-        throw new ModelError(`Cannot add units to a String or Boolean in <i>[${toHTML(this.dna.name)}]</i>.`, {
+        throw new ModelError(`Cannot add units to a String or Boolean in <i>[${sanitizeText(this.dna.name)}]</i>.`, {
           primitive: this.orig(),
           showEditor: true,
           code: 1082
@@ -319,7 +319,7 @@ export class SPrimitive {
       let scale = convertUnits(m.units, this.dna.units, true);
 
       if (scale === 0) {
-        throw new ModelError(`Wrong units generated for <i>[${toHTML(this.dna.name)}]</i>. Expected <i>${this.dna.units ? this.dna.units.toString() : "unitless"}</i>, and got <i>${m.units ? m.units.toString() : "unitless"}</i>.`, {
+        throw new ModelError(`Wrong units generated for <i>[${sanitizeText(this.dna.name)}]</i>. Expected <i>${this.dna.units ? this.dna.units.toString() : "unitless"}</i>, and got <i>${m.units ? m.units.toString() : "unitless"}</i>.`, {
           primitive: this.orig(),
           showEditor: true,
           code: 1083
@@ -363,7 +363,7 @@ export class SPrimitive {
     if (this.cachedValue === undefined) {
       if (this.simulate.evaluatedPrimitives.has(this)) {
         let arrayed = [...this.simulate.evaluatedPrimitives.values()];
-        throw new ModelError(`Circular equation loop identified including the primitives: ${toHTML(arrayed.slice(arrayed.indexOf(this)).map(x => x.dna.name).join(", "))}`, {
+        throw new ModelError(`Circular equation loop identified including the primitives: ${sanitizeText(arrayed.slice(arrayed.indexOf(this)).map(x => x.dna.name).join(", "))}`, {
           primitive: this.orig(),
           showEditor: true,
           code: 1085
@@ -412,11 +412,13 @@ export class SPrimitive {
     }
 
 
-    if (this.cachedValue.fullClone) {
-      return this.cachedValue.fullClone();
-    } else {
-      return this.cachedValue;
+    if (this.cachedValue instanceof Material) {
+      return new Material(this.cachedValue.value, this.cachedValue.units, this.cachedValue.explicitUnits);
     }
+    if (this.cachedValue && this.cachedValue.fullClone) {
+      return this.cachedValue.fullClone();
+    }
+    return this.cachedValue;
   }
 
   testConstraints(x) {
@@ -437,8 +439,8 @@ export class SPrimitive {
   }
 
   /**
-   * @param {any} tree 
-   * @param {Map} neighborhood 
+   * @param {any} tree
+   * @param {Map} neighborhood
    */
   setEquation(tree, neighborhood) {
 
@@ -481,7 +483,7 @@ export class Placeholder extends SPrimitive {
 
   // @ts-ignore
   calculateValue() {
-    throw new ModelError(`<i>[${toHTML(this.dna.name)}]</i> is a placeholder and cannot be used as a direct value in equations.`, {
+    throw new ModelError(`<i>[${sanitizeText(this.dna.name)}]</i> is a placeholder and cannot be used as a direct value in equations.`, {
       primitive: this.primitive.dna.primitive,
       showEditor: true,
       code: 1091
@@ -575,7 +577,7 @@ export class SState extends SPrimitive {
           }
 
           if (this.simulate.transitionPrimitives.length > 1200 && this.simulate.transitionPrimitives.includes(this)) {
-            throw new ModelError(`Circular fully active transition loop identified including the states: ${toHTML(this.simulate.transitionPrimitives.slice(0, 5).map(x => "[" + x.dna.name + "]").join(", "))}`, {
+            throw new ModelError(`Circular fully active transition loop identified including the states: ${sanitizeText(this.simulate.transitionPrimitives.slice(0, 5).map(x => "[" + x.dna.name + "]").join(", "))}`, {
               code: 1105
             });
           }
@@ -691,7 +693,7 @@ function scheduleTrigger() {
 /**
  * @this {STransition|SAction}
  *
- * @param {boolean} force
+ * @param {boolean=} force
  */
 function clearTrigger(force) {
   if (this.scheduledTrigger && (force || !this.dna.repeat)) {
@@ -704,7 +706,7 @@ function clearTrigger(force) {
 /**
  * @this {STransition|SAction}
  *
- * @param {boolean} clear
+ * @param {boolean=} clear
  */
 export function updateTrigger(clear) {
   this.initialized = true;
@@ -740,7 +742,7 @@ export function updateTrigger(clear) {
         }
       } else {
         if (!(v instanceof Material)) {
-          throw new ModelError(`The value of this trigger must evaluate to a number. Got <i>${toHTML("" + v)}</i>.`, {
+          throw new ModelError(`The value of this trigger must evaluate to a number. Got <i>${sanitizeText("" + v)}</i>.`, {
             primitive: this.orig(),
             showEditor: true,
             code: 1112
@@ -856,7 +858,7 @@ export function updateTrigger(clear) {
           } else {
             // v is the probability of at least one event happening in the time period
             // we use the exponential distribution to determine the time until the next event
-            let l = -Math.log(1 - v);
+            let l = -Math.log1p(-v);
             t = new Material(RandExp(this.simulate, l), this.simulate.timeUnits);
           }
 
@@ -885,9 +887,8 @@ export function updateTrigger(clear) {
 
             let v0 = this.scheduledTrigger.data.value;
             if (v0 !== v) {
-              let l0 = -Math.log(1 - v0);
-              // @ts-ignore - v is going to be a number at this point
-              let l = -Math.log(1 - v);
+              let l0 = -Math.log1p(-v0);
+              let l = -Math.log1p(-v);
 
               t = mult(t, new Material(l0 / l));
             }
@@ -896,6 +897,14 @@ export function updateTrigger(clear) {
 
             this.scheduledTrigger = null;
           }
+        }
+
+        if (isNaN(t.value)) {
+          throw new ModelError("The time until activation is not a valid number.", {
+            primitive: this.orig(),
+            showEditor: true,
+            code: 1122
+          });
         }
 
         t = plus(t, this.simulate.time());
@@ -1063,7 +1072,7 @@ export class SPopulation extends SPrimitive {
    * @returns {Material}
    */
   toNum() {
-    throw new ModelError(`<i>[${toHTML(this.dna.name)}]</i> is a population of agents and cannot be used as a direct value in equations.`, {
+    throw new ModelError(`<i>[${sanitizeText(this.dna.name)}]</i> is a population of agents and cannot be used as a direct value in equations.`, {
       code: 1107
     });
   }
@@ -1598,7 +1607,7 @@ export class SStock extends SPrimitive {
           }
 
           let overlap = minus(this.simulate.coreBank.get("min")([delaySpanEnd, eventSpan[1]]), eventSpan[0]);
-          
+
           this.level = plus(this.level, mult(overlap, this.initRate));
         }
       });
@@ -1633,7 +1642,7 @@ export class SStock extends SPrimitive {
   add(amnt, oldTime) {
 
     let targetTime;
-    
+
     if (this.delay !== undefined) {
       // @ts-ignore bigjs is misstyped
       targetTime = new Material(Big(oldTime.value).plus(this.delay.forceUnits(oldTime.units).value).toNumber(), oldTime.units);
@@ -1850,12 +1859,12 @@ export class SConverter extends SPrimitive {
 
         return new Material(this.dna.outputs[this.dna.outputs.length - 1].value);
       };
-      
+
       let r = /** @type {Material} */ (processItemInner(inp));
       return new Material(r.value, this.dna.units);
     };
-    
-    
+
+
     if (input instanceof Vector) {
       return input.clone().recurseApply(processItem);
     } else if (input instanceof Material) {
@@ -2119,7 +2128,7 @@ export class SFlow extends SPrimitive {
             // an adjustment to maintain non-negativity
             modifier = plus(toNum(this.omega.level), rate);
           } catch (err) {
-            throw new ModelError(`Incompatible units for flow <i>[${toHTML(this.dna.name)}]</i> and connected stock <i>[${toHTML(this.omega.dna.name)}]</i>. Stock has units of <i>${this.omega.dna.units ? this.omega.dna.units.toString() : "unitless"}</i>. The flow should have the equivalent units divided by some time unit such as Years.`, {
+            throw new ModelError(`Incompatible units for flow <i>[${sanitizeText(this.dna.name)}]</i> and connected stock <i>[${sanitizeText(this.omega.dna.name)}]</i>. Stock has units of <i>${this.omega.dna.units ? this.omega.dna.units.toString() : "unitless"}</i>. The flow should have the equivalent units divided by some time unit such as Years.`, {
               primitive: this.orig(),
               showEditor: false,
               code: 1203
@@ -2151,7 +2160,7 @@ export class SFlow extends SPrimitive {
             // an adjustment to maintain non-negativity
             modifier = minus(toNum(this.alpha.level), rate);
           } catch (err) {
-            throw new ModelError(`Incompatible units for flow <i>[${toHTML(this.dna.name)}]</i> and connected stock <i>[${toHTML(this.alpha.dna.name)}]</i>. Stock has units of <i>${this.alpha.dna.units ? this.alpha.dna.units.toString() : "unitless"}</i>. The flow should have the equivalent units divided by some time unit such as Years.`, {
+            throw new ModelError(`Incompatible units for flow <i>[${sanitizeText(this.dna.name)}]</i> and connected stock <i>[${sanitizeText(this.alpha.dna.name)}]</i>. Stock has units of <i>${this.alpha.dna.units ? this.alpha.dna.units.toString() : "unitless"}</i>. The flow should have the equivalent units divided by some time unit such as Years.`, {
               primitive: this.orig(),
               showEditor: false,
               code: 1204
@@ -2246,13 +2255,13 @@ export class SFlow extends SPrimitive {
         }
 
         if (err.code === 2000 || err.code === 2001) {
-          throw new ModelError(`Incompatible vector keys for flow <i>[${toHTML(this.dna.name)}]</i> and connected stock <i>[${toHTML(stock.dna.name)}]</i>.`, {
+          throw new ModelError(`Incompatible vector keys for flow <i>[${sanitizeText(this.dna.name)}]</i> and connected stock <i>[${sanitizeText(stock.dna.name)}]</i>.`, {
             primitive: this.orig(),
             showEditor: false,
             code: 1209
           });
         } else {
-          throw new ModelError(`Incompatible units for flow <i>[${toHTML(this.dna.name)}]</i> and connected stock <i>[${toHTML(stock.dna.name)}]</i>. Stock has units of <i>${stock.dna.units ? stock.dna.units.toString() : "unitless"}</i>. The flow should have the equivalent units divided by some time unit such as Years.`, {
+          throw new ModelError(`Incompatible units for flow <i>[${sanitizeText(this.dna.name)}]</i> and connected stock <i>[${sanitizeText(stock.dna.name)}]</i>. Stock has units of <i>${stock.dna.units ? stock.dna.units.toString() : "unitless"}</i>. The flow should have the equivalent units divided by some time unit such as Years.`, {
             primitive: this.orig(),
             showEditor: false,
             code: 1210
@@ -2281,7 +2290,7 @@ export class SFlow extends SPrimitive {
 /**
  * @param {SPrimitive} primitive
  * @param {import("./Simulator").Simulator} simulate
- * 
+ *
  * @return {Map<PARENT_SYMBOL|string, any>}
  */
 function localVars(primitive, simulate) {
@@ -2294,7 +2303,7 @@ function localVars(primitive, simulate) {
   } else if (primitive.container) {
     // @ts-ignore
     return new Map([
-      [PARENT_SYMBOL, simulate.varBank], 
+      [PARENT_SYMBOL, simulate.varBank],
       ["self", primitive.container]
     ]);
   } else {
@@ -2312,7 +2321,7 @@ function localVars(primitive, simulate) {
  * @param {import("./Simulator").Simulator} simulate
  */
 function constraintAlert(item, type, val, simulate) {
-  let msg = "The " + (type === "max" ? "maximum" : "minimum") + " constraint on the primitive [<i>" + toHTML(simulate.model.getId(item.id).name) + "</i>] has been violated. The primitive's value attempted to become " + toHTML("" + val.value) + " when the " + (type === "max" ? "maximum" : "minimum") + " allowed value is " + (type === "max" ? item.dna.maxConstraint : item.dna.minConstraint) + ".";
+  let msg = "The " + (type === "max" ? "maximum" : "minimum") + " constraint on the primitive [<i>" + sanitizeText(simulate.model.getId(item.id).name) + "</i>] has been violated. The primitive's value attempted to become " + sanitizeText("" + val.value) + " when the " + (type === "max" ? "maximum" : "minimum") + " allowed value is " + (type === "max" ? item.dna.maxConstraint : item.dna.minConstraint) + ".";
 
   throw new ModelError(msg, {
     primitive: item.dna.primitive,

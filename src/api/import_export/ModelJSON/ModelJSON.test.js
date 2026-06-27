@@ -17,13 +17,13 @@ describe("ModelJSON samples", () => {
     test(`should correctly process ${file}`, () => {
       let filePath = join(samplesDir, file);
       let originalJson = JSON.parse(readFileSync(filePath, "utf8"));
-            
+
       let loadedModel = loadModelJSON(originalJson);
       expect(loadedModel).toBeTruthy();
 
 
       loadedModel.simulate(); // no error
-            
+
       let exportedJson = createModelJSON(loadedModel);
 
       // sort the elements array in each
@@ -37,7 +37,7 @@ describe("ModelJSON samples", () => {
       if (!originalJson.simulation) {
         delete exportedJson.simulation;
       }
-      
+
       expect(exportedJson).toEqual(originalJson);
     });
   });
@@ -68,7 +68,7 @@ test("Links are case insensitive", () => {
       }
     ]
   });
-    
+
   let res = model.simulate();
   expect(res.value(model.get(z => z.name === "y"))).toBe(6);
 
@@ -96,7 +96,7 @@ test("Links are case insensitive", () => {
       }
     ]
   });
-    
+
   res = model.simulate();
   expect(res.value(model.get(z => z.name === "y"))).toBe(6);
 
@@ -126,7 +126,7 @@ test("Links are case insensitive", () => {
       }
     ]
   });
-    
+
   res = model.simulate();
   expect(res.value(model.get(z => z.name === "y"))).toBe(6);
 
@@ -153,7 +153,7 @@ test("Invalid ModelJSON", () => {
       globals: true
     },
     elements: [
-      
+
     ]
   })).toThrow("requires a string value");
 
@@ -163,7 +163,7 @@ test("Invalid ModelJSON", () => {
       units: true
     },
     elements: [
-      
+
     ]
   })).toThrow("requires an array value");
 
@@ -208,7 +208,7 @@ test("Invalid ModelJSON", () => {
 
   expect(() => loadModelJSON({
     elements: [
-      {type: "CONVERTER", behavior: { data: [[1,2,3]] }}
+      {type: "CONVERTER", behavior: { data: [[1, 2, 3]] }}
     ]
   })).toThrow("Converter data should be an array");
 
@@ -249,6 +249,24 @@ test("Invalid ModelJSON", () => {
     simulation: [1],
     elements: []
   })).toThrow(/Property "simulation" requires an object value. Got: \[1\]/);
+
+  expect(() => loadModelJSON({
+    elements: [
+      { type: "VARIABLE", name: "a", behavior: { value: 1 } }
+    ],
+    scenarios: [
+      { name: "Missing values" }
+    ]
+  })).toThrow(/Scenarios require a values object/);
+
+  expect(() => loadModelJSON({
+    elements: [
+      { type: "VARIABLE", name: "a", behavior: { value: 1 } }
+    ],
+    scenarios: [
+      { name: "Unknown primitive", values: { missing: 2 } }
+    ]
+  })).toThrow(/Scenario value element "missing" not found/);
 
 
 });
@@ -369,6 +387,29 @@ it("Duplicate names", () => {
 
   expect(() => toModelJSON(m)).toThrow(/unique/);
 });
+
+test("Algorithm imported/exported correctly", () => {
+  // RK4
+  let model = loadModelJSON({
+    simulation: { algorithm: "RK4" },
+    elements: [
+      { type: "VARIABLE", name: "a", behavior: { value: 1 } }
+    ]
+  });
+  expect(model.algorithm).toBe("RK4");
+  expect(createModelJSON(model).simulation.algorithm).toBe("RK4");
+
+  // RK1 (Euler)
+  model = loadModelJSON({
+    simulation: { algorithm: "RK1" },
+    elements: [
+      { type: "VARIABLE", name: "a", behavior: { value: 1 } }
+    ]
+  });
+  expect(model.algorithm).toBe("Euler");
+  expect(createModelJSON(model).simulation.algorithm).toBe("RK1");
+});
+
 
 it("Converters referencing each other are imported correctly", () => {
   let inputJson = {

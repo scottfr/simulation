@@ -2,7 +2,7 @@ import { Model } from "../../src/api/Model.js";
 
 
 describe.each([
-  ["Euler"], ["RK4"]
+  [/** @type {const} */ ("Euler")], [/** @type {const} */ ("RK4")]
 ])("Simulation %s",
 
   /**
@@ -474,7 +474,7 @@ describe.each([
       expect(res.series(s)[3]).toBe(3);
       expect(res.series(s)[4]).toBe(4);
 
-        
+
       s.delay = 2;
       res = m.simulate();
       expect(res.series(s)[0]).toBe(0);
@@ -664,7 +664,7 @@ describe.each([
         expect(res.series(s)[1]).toBe(1);
         expect(res.series(s)[2]).toBe(1);
         expect(res.series(s)[5]).toBe(1);
-  
+
         expect(res.series(s2)[0]).toBe(0);
         expect(res.series(s2)[1]).toBe(0);
         expect(res.series(s2)[2]).toBe(1);
@@ -674,7 +674,7 @@ describe.each([
       } else {
         expect(res.series(s)[0]).toBe(0);
         expect(Math.round(res.series(s)[20] * 1000)).toBe(1 * 1000);
-  
+
         expect(res.series(s2)[0]).toBe(0);
         expect(Math.round(res.series(s2)[20] * 1000)).toBe(19 * 1000);
       }
@@ -683,13 +683,13 @@ describe.each([
       s.delay = 0;
 
       res = m.simulate();
- 
+
       if (algorithm === "Euler") {
         expect(res.series(s)[0]).toBe(0);
         expect(res.series(s)[1]).toBe(1);
         expect(res.series(s)[2]).toBe(1);
         expect(res.series(s)[5]).toBe(1);
-   
+
         expect(res.series(s2)[0]).toBe(0);
         expect(res.series(s2)[1]).toBe(0);
         expect(res.series(s2)[2]).toBe(1);
@@ -699,7 +699,7 @@ describe.each([
       } else {
         expect(res.series(s)[0]).toBe(0);
         expect(Math.round(res.series(s)[20] * 1000)).toBe(1 * 1000);
-   
+
         expect(res.series(s2)[0]).toBe(0);
         expect(Math.round(res.series(s2)[20] * 1000)).toBe(19 * 1000);
       }
@@ -744,7 +744,7 @@ describe.each([
 
       sA.initial = 100;
       sB.initial = 40;
-      
+
 
       let res = m.simulate();
       expect(res.series(total)[0]).toBe(140);
@@ -1044,7 +1044,7 @@ describe.each([
       // both are non-negative
 
       s.nonNegative = true;
-      
+
       res = m.simulate();
       expect(res.series(s)[20]).toBe(11);
       expect(res.series(s2)[20]).toBe(0);
@@ -1115,7 +1115,9 @@ describe.each([
 
       let a = m.Variable({
         name: "a",
-        value: "x <- 9\n[b]+5\nx"
+        value: `x <- 9
+[b]+5
+x`
       });
       let b = m.Variable({
         name: "b",
@@ -1136,7 +1138,9 @@ describe.each([
       });
       a = m.Variable({
         name: "a",
-        value: "x <- 9\n[b]+5\nx"
+        value: `x <- 9
+[b]+5
+x`
       });
 
       m.Link(b, a);
@@ -1356,7 +1360,7 @@ describe.each([
       expect(res.series(s)[2]).toBe(10);
       expect(res.series(f)[1]).toBe(0);
 
-      
+
       // Vectors
 
       s.initial = "{10, 10}";
@@ -1422,7 +1426,7 @@ describe.each([
       expect(200).toBe(res.series(c)[60]);
 
       // conflicting names aren't an issue
-      
+
       let p2 = m.Variable({
         name: "Param"
       });
@@ -1537,7 +1541,7 @@ describe.each([
       p.value = "{years, years+100}";
 
       res = m.simulate();
-      
+
       expect(res.series(c)[0][0]).toBe(0);
       expect(res.series(c)[0][1]).toBe(1000);
 
@@ -1548,7 +1552,7 @@ describe.each([
       p.value = "{a: {x: years, y: years+100 }}";
 
       res = m.simulate();
-      
+
       expect(res.series(c)[0].a.x).toBe(0);
       expect(res.series(c)[0].a.y).toBe(1000);
 
@@ -1700,6 +1704,73 @@ x.foo`
       expect(() => m.simulate()).toThrow(/does not accept string values/);
     });
 
+    test("Delay and PastValues works with strings", () => {
+      let m = new Model({ algorithm });
+      m.timeLength = 3;
+      m.timeStep = 1;
+
+      let p = m.Variable({
+        name: "My Variable 1"
+      });
+      let delayed = m.Variable({
+        name: "Delayed"
+      });
+      let history = m.Variable({
+        name: "History"
+      });
+      let initial = m.Variable({
+        name: "Initial"
+      });
+
+      m.Link(p, delayed);
+      m.Link(p, history);
+      m.Link(p, initial);
+
+      p.value = "IfThenElse(Time() < {1 Years}, \"alpha\", IfThenElse(Time() < {2 Years}, \"beta\", IfThenElse(Time() < {3 Years}, \"gamma\", \"delta\")))";
+      delayed.value = "Delay([my variable 1], 1)";
+      history.value = "PastValues([my variable 1]).Join(\"|\")";
+      initial.value = "Delay([my variable 1], 10, \"missing\")";
+
+      let res = m.simulate();
+      expect(res.series(delayed)).toStrictEqual(["alpha", "alpha", "beta", "gamma"]);
+      expect(res.value(history)).toBe("alpha|beta|gamma|delta");
+      expect(res.value(initial)).toBe("missing");
+    });
+
+    test("Delay and PastValues works with booleans", () => {
+      let m = new Model({ algorithm });
+      m.timeLength = 3;
+      m.timeStep = 1;
+
+      let p = m.Variable({
+        name: "My Variable 1"
+      });
+      let delayed = m.Variable({
+        name: "Delayed"
+      });
+      let history = m.Variable({
+        name: "History"
+      });
+      let initial = m.Variable({
+        name: "Initial"
+      });
+
+      m.Link(p, delayed);
+      m.Link(p, history);
+      m.Link(p, initial);
+
+      p.value = "Time() < {2 Years}";
+      delayed.value = "Delay([my variable 1], 1)";
+      history.value = "PastValues([my variable 1]).Join(\"|\")";
+      initial.value = "Delay([my variable 1], 10, true)";
+
+      let res = m.simulate();
+      expect(res.series(p)).toStrictEqual([1, 1, 0, 0]);
+      expect(res.series(delayed)).toStrictEqual([1, 1, 1, 0]);
+      expect(res.value(history)).toBe("1|1|0|0");
+      expect(res.value(initial)).toBe(1);
+    });
+
 
     test("Vector(String) in variable target number", () => {
       let m = new Model({ algorithm });
@@ -1818,6 +1889,14 @@ x.foo`
       expect(res.series(p)[28]).toBe(0);
       expect(res.series(p)[20]).toBe(0.5);
       expect(res.series(p)[30]).toBe(0.5);
+      p.value = "Pulse(10, 2, -1)";
+      expect(() => m.simulate()).toThrow(/width/);
+      p.value = "Pulse(10, 2, 0, -1)";
+      res = m.simulate();
+      expect(res.series(p)[10]).toBe(2);
+      expect(res.series(p)[20]).toBe(0);
+      p.value = "Pulse(10, 2, 0, -2)";
+      expect(() => m.simulate()).toThrow(/repeat period/);
 
       // Test If Then Else
       p.value = "IfThenElse(Years<20 and Years >= 10, 1, 0)";
@@ -1858,6 +1937,13 @@ x.foo`
       expect(res.series(p)[5]).toBe(0);
       expect(res.series(p)[12]).toBe(4);
       expect(res.series(p)[16]).toBe(10);
+      p.value = "Ramp(10, 10, 10)";
+      res = m.simulate();
+      expect(res.series(p)[9]).toBe(0);
+      expect(res.series(p)[10]).toBe(10);
+      expect(res.series(p)[11]).toBe(10);
+      p.value = "Ramp(10, 5, 10)";
+      expect(() => m.simulate()).toThrow(/finish time/);
 
 
       // Test Staircase function
@@ -1907,6 +1993,10 @@ x.foo`
       expect(res.series(p)[5]).toBe(1);
       expect(res.series(p)[12]).toBe(5);
       expect(res.series(p)[16]).toBe(11);
+      p.value = "{1 cows} + Ramp(10, 10, {10 cows})";
+      res = m.simulate();
+      expect(res.series(p)[9]).toBe(1);
+      expect(res.series(p)[10]).toBe(11);
 
       // Test Staircase function
       p.value = "{1 cows} + Step(10, {3 cows})";
@@ -2257,8 +2347,7 @@ x.foo`
       x<-1
       y<-2
 
-      delay1(x, y)
-      `;
+      delay1(x, y)`;
       res = m.simulate();
       expect(res.value(v, 0)).toBe(1);
       expect(res.value(v)).toBe(1);
@@ -2269,8 +2358,7 @@ x.foo`
       y<-2
       z<-2
 
-      delay3(x,y,z)
-      `;
+      delay3(x,y,z)`;
       res = m.simulate();
       expect(res.value(v, 0)).toBe(2);
       expect(res.value(v)).toBeLessThan(2);
@@ -3110,7 +3198,7 @@ x.foo`
       expect(corrAll).toBeGreaterThan(corr3);
     });
 
-    
+
 
 
     test("Delay with unnamed vector", () => {
@@ -3129,8 +3217,8 @@ x.foo`
 
 
       let res = m.simulate();
-      expect(res.series(p2)[1]).toEqual([0,0,0]);
-      expect(res.series(p2)[5]).toEqual([1,4,9]);
+      expect(res.series(p2)[1]).toEqual([0, 0, 0]);
+      expect(res.series(p2)[5]).toEqual([1, 4, 9]);
     });
 
 
@@ -3188,7 +3276,7 @@ x.foo`
 
       p2.value = "Delay1([x], {a: -3, b: 6})";
       expect(() => m.simulate()).toThrow(/must be greater than/);
-      
+
 
       p2.value = "Delay1([x], {a: 3, b: 6}, {a: -1, b: -1})";
       res = m.simulate();
@@ -3209,7 +3297,7 @@ x.foo`
         expect(res.series(p2)[1].a).toBeGreaterThan(res.series(p2)[1].b);
       }
       expect(res.series(p2)[9].a).toBeGreaterThan(res.series(p2)[9].b);
-      
+
       p2.value = "Delay3([x], {a: 3, b: 6}, {a: -1, b: -1})";
       res = m.simulate();
       if (algorithm === "Euler") {
@@ -3427,7 +3515,7 @@ x.foo`
       expect(res.series(p1)[50]).toBe(36);
     });
 
-    
+
     test("Smoothing and units", () => {
       let m = new Model({ algorithm });
 

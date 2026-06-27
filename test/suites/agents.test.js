@@ -3,7 +3,7 @@ import { areResultsDifferent } from "../TestUtilities.js";
 
 
 describe.each([
-  ["Euler"], ["RK4"]
+  [/** @type {const} */ ("Euler")], [/** @type {const} */ ("RK4")]
 ])("Agents %s",
   /**
    * @param {"Euler"|"RK4"} algorithm
@@ -302,12 +302,20 @@ describe.each([
       expect(res.series(s)[0]).toBe(0);
       expect(res.series(v)[0]).toBe(0);
 
-      v.value = "if [State] then\n 1\nelse\n 0\nend if";
+      v.value = `if [State] then
+  1
+else
+  0
+end if`;
       res = m.simulate();
       expect(res.series(s)[0]).toBe(0);
       expect(res.series(v)[0]).toBe(0);
 
-      v.value = "if[State]then\n 1\nelse\n 0\nend if";
+      v.value = `if[State]then
+  1
+else
+  0
+end if`;
       res = m.simulate();
       expect(res.series(s)[0]).toBe(0);
       expect(res.series(v)[0]).toBe(0);
@@ -838,19 +846,24 @@ describe.each([
       expect(res.series(v)[2]).toBe(11);
       expect(res.series(v2)[9]).toBe(21);
 
-      f.agentParent = "x <- new AgentBase\n x.doMove <- function() self.bar({10, 20})\n x";
+      f.agentParent = `x <- new AgentBase
+x.doMove <- function() self.bar({10, 20})
+x`;
       mover.action = "Self.doMove()";
 
       expect(() => m.simulate()).toThrow();
 
 
-      f.agentParent = "x <- new AgentBase\n x.doMove <- function() self.move({10, 20})\n x";
+      f.agentParent = `x <- new AgentBase
+x.doMove <- function() self.move({10, 20})
+x`;
 
       res = m.simulate();
       expect(res.series(v)[2]).toBe(10 + 2 * 10);
       expect(res.series(v2)[9]).toBe(40 + 9 * 20);
 
-      m.globals = "mover <- new AgentBase\n mover.doMove <- function(dist) self.move(dist*{1, 2})";
+      m.globals = `mover <- new AgentBase
+mover.doMove <- function(dist) self.move(dist*{1, 2})`;
       f.agentParent = "mover";
       mover.action = "Self.doMove(10)";
       res = m.simulate();
@@ -1262,6 +1275,96 @@ describe.each([
     });
 
 
+    test("Agent function argument validation", () => {
+      let m = new Model({ algorithm });
+
+      let f = m.Agent();
+      f.State({
+        name: "State"
+      });
+      f.Variable({
+        name: "Agent Value",
+        value: "self.index()"
+      });
+
+      let p = m.Population({
+        name: "Population",
+        agentBase: f,
+        populationSize: 2,
+        geoPlacementType: "Custom Function",
+        geoPlacementFunction: "{self.index(), self.index()}"
+      });
+      m.Link(f, p);
+
+      let out = m.Variable({
+        name: "Out",
+        value: "1"
+      });
+      m.Link(p, out);
+
+      out.value = "PopulationSize(1)";
+      expect(() => m.simulate()).toThrow(/agent population/);
+
+      out.value = "Value(1, [Agent Value])";
+      expect(() => m.simulate()).toThrow(/Invalid type/);
+
+      out.value = "SetValue(1, [Agent Value], 2)";
+      expect(() => m.simulate()).toThrow(/Invalid type/);
+
+      out.value = "[Population].FindState([Population])";
+      expect(() => m.simulate()).toThrow(/requires a State primitive/);
+
+      out.value = "[Population].FindNotState([Population])";
+      expect(() => m.simulate()).toThrow(/requires a State primitive/);
+
+      out.value = "[Population].FindIndex(3)";
+      expect(() => m.simulate()).toThrow(/Index not found/);
+
+      out.value = "[Population].FindIndex({1 meter})";
+      expect(() => m.simulate()).toThrow(/does not accept units/);
+
+      out.value = "[Population].FindNearest({0, 0}, 0)";
+      expect(() => m.simulate()).toThrow(/at least one agent/);
+
+      out.value = "[Population].FindNearest({0, 0}, 1.5)";
+      expect(() => m.simulate()).toThrow(/Count must be an integer/);
+
+      out.value = "[Population].FindNearest({0, 0}, 3)";
+      expect(() => m.simulate()).toThrow(/Can't find nearest 3 agents/);
+
+      out.value = "[Population].FindFurthest({0, 0}, 0)";
+      expect(() => m.simulate()).toThrow(/at least one agent/);
+
+      out.value = "[Population].FindFurthest({0, 0}, 1.5)";
+      expect(() => m.simulate()).toThrow(/Count must be an integer/);
+
+      out.value = "[Population].FindFurthest({0, 0}, 3)";
+      expect(() => m.simulate()).toThrow(/Can't find furthest 3 agents/);
+
+      out.value = "Distance({0}, {1, 2})";
+      expect(() => m.simulate()).toThrow(/exactly two numbers/);
+
+      out.value = "Distance(1, {1, 2})";
+      expect(() => m.simulate()).toThrow(/Location must be a vector or an agent/);
+
+      let action = f.Action({
+        trigger: "Condition",
+        value: "years = 1",
+        action: "self.setLocation({a: 1, b: 2})"
+      });
+      m.Link(p, action);
+      out.value = "1";
+
+      expect(() => m.simulate()).toThrow(/names 'x' and 'y'/);
+
+      action.action = "self.move({1})";
+      expect(() => m.simulate()).toThrow(/exactly two numbers/);
+
+      action.action = "self.move({x: 1, y: 2})";
+      expect(() => m.simulate()).not.toThrow();
+    });
+
+
     test("Exp Delay in Agents", () => {
       let m = new Model({ algorithm });
 
@@ -1440,7 +1543,7 @@ describe.each([
         trigger: "Condition",
         value: "index(self) <> 1"
       });
-      
+
       let a = f.Action({
         name: "Add",
         trigger: "Condition",
@@ -1568,6 +1671,69 @@ describe.each([
       expect(areResultsDifferent(res._data, res4._data)).toBe(false);
     });
 
+
+    test("Transition probability is a one-period probability", () => {
+      let m = new Model({
+        algorithm,
+        timeLength: 1,
+        timeStep: 1
+      });
+
+      let s = m.State({
+        name: "Start",
+        startActive: true
+      });
+      let done = m.State({
+        name: "Done",
+        startActive: false
+      });
+      let t = m.Transition(s, done, {
+        trigger: "Probability",
+        value: 0
+      });
+
+      // 0 probability, does not transition
+      let res = m.simulate();
+      expect(res.series(s)).toStrictEqual([1, 1]);
+      expect(res.series(done)).toStrictEqual([0, 0]);
+
+      // 1 probability, transitions immediately
+      t.value = 1;
+      res = m.simulate();
+      expect(res.series(s)).toStrictEqual([1, 0]);
+      expect(res.series(done)).toStrictEqual([0, 1]);
+
+      // .25 probability, leads to 25% transitioning in one step
+      let transitionedCount = 0;
+      let runCount = 1500;
+
+      for (let seed = 1; seed <= runCount; seed++) {
+        m = new Model({
+          algorithm,
+          timeLength: 1,
+          timeStep: 1
+        });
+        m.globals = `setRandSeed(${seed})`;
+
+        s = m.State({
+          name: "Start",
+          startActive: true
+        });
+        done = m.State({
+          name: "Done",
+          startActive: false
+        });
+        m.Transition(s, done, {
+          trigger: "Probability",
+          value: 0.25
+        });
+
+        res = m.simulate();
+        transitionedCount += res.value(done, 1);
+      }
+
+      expect(Math.round(transitionedCount / runCount * 100)).toBe(25);
+    });
 
     test("Changing transition probability of 1", () => {
       let m = new Model({

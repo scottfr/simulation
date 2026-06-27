@@ -1,3 +1,13 @@
+/**
+ * Find a unit shared by all materials. Or null if they are all unitless.
+ *
+ * @param {Material[]} materials
+ * @returns {{ units: import("./Units").UnitStore|null, explicitUnits: boolean }}
+ */
+export function findSharedUnits(materials: Material[]): {
+    units: import("./Units").UnitStore | null;
+    explicitUnits: boolean;
+};
 /** @typedef {"MATERIAL"|"VECTOR"|"PRIMITIVE"|null} OperandType */
 /**
  * @param {Material|UnitStore} lhs

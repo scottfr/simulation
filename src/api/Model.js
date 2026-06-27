@@ -1,7 +1,7 @@
 import { ModelNode, modelNodeClone, primitives } from "../ModelNode.js";
 import { runSimulation } from "../Modeler.js";
 import { nodeBase } from "../Constants.js";
-// eslint-disable-next-line
+
 import { Primitive, Stock, Variable, Converter, State, Action, Population, Flow, Transition, Link, Agent, Folder } from "./Blocks.js";
 import { Results } from "./Results.js";
 import { SimulationError } from "./SimulationError.js";
@@ -88,6 +88,7 @@ export class Model {
     /** @type {string} */
     this.description = null;
     this.visualizations = [];
+    this.scenarios = [];
 
     this._graph = new ModelNode();
     this._graph.id = "1";
@@ -152,9 +153,9 @@ export class Model {
 
   /**
    * Checks the model for some static errors (e.g syntax errors). The model is not run and runtime errors are not checked.
-   * 
+   *
    * The function returns an array of errors found.
-   * 
+   *
    * @returns {ModelError[]}
    */
   check() {
@@ -163,9 +164,9 @@ export class Model {
 
 
     /**
-     * @param {Primitive} p 
-     * @param {string} eq 
-     * @returns 
+     * @param {Primitive} p
+     * @param {string} eq
+     * @returns
      */
     function equationCheck(p, eq) {
       let tree;
@@ -250,10 +251,10 @@ export class Model {
    * Async simulation mode. Allows for pausing the simulation and adjusting
    * values. Returns a promise that resolves with the results or rejects
    * with an error.
-   * 
+   *
    * @param {object} options
    * @param {function({ results: Results, time: number, setValue: function(Primitive, any) })=} options.onStep - async function that will be awaited each time step prior to simulation resuming, use setValue() to adjust values.
-   * 
+   *
    * @returns {Promise<Results, { error: string, errorCode: number, errorPrimitive: Primitive, errorPrimitiveName: string, errorPrimitiveId: string}|Error>}
    */
   async simulateAsync(options = {}) {

@@ -9,7 +9,7 @@ export function isTrue(item) {
  * @param {string} str
  * @returns {string}
  */
-export function toHTML(str) {
+export function sanitizeText(str) {
   return str.replace(/[&<>'"]/g,
     tag => ({
       "&": "&amp;",
@@ -28,8 +28,12 @@ export function toHTML(str) {
  * @returns {string}
  */
 export function commaStr(nStr, sanitize=true) {
+  if (nStr instanceof String) {
+    nStr = nStr.valueOf();
+  }
+
   if (typeof nStr === "string") {
-    return sanitize ? toHTML(nStr) : nStr;
+    return sanitize ? sanitizeText(nStr) : nStr;
   }
 
   if (typeof nStr === "boolean") {
@@ -40,7 +44,7 @@ export function commaStr(nStr, sanitize=true) {
     return "";
   }
 
-  if (nStr >= 1e9 || (nStr <= 1e-9 && nStr !== 0)) {
+  if (Math.abs(nStr) >= 1e9 || (Math.abs(nStr) <= 1e-9 && nStr !== 0)) {
     return nStr.toPrecision(3);
   } else {
     nStr = round(nStr, 9) + "";

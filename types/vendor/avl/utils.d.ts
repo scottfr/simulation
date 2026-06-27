@@ -15,6 +15,6 @@ export function loadRecursive(parent: any, keys: any, values: any, start: any, e
     key: any;
     data: any;
     parent: any;
-};
+} | null;
 export function markBalance(node: any): any;
 export function sort(keys: any, values: any, left: any, right: any, compare: any): void;

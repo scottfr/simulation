@@ -1,18 +1,18 @@
 /**
  * @this {STransition|SAction}
  *
- * @param {boolean} clear
+ * @param {boolean=} clear
  */
-export function updateTrigger(this: SAction | STransition, clear: boolean): void;
+export function updateTrigger(this: STransition | SAction, clear?: boolean | undefined): void;
 export class updateTrigger {
     /**
      * @this {STransition|SAction}
      *
-     * @param {boolean} clear
+     * @param {boolean=} clear
      */
-    constructor(this: SAction | STransition, clear: boolean);
+    constructor(this: STransition | SAction, clear?: boolean | undefined);
     initialized: boolean;
-    scheduledTrigger: Task;
+    scheduledTrigger: Task | null | undefined;
 }
 /** @typedef {import("./SharedTypes.js").ValueType} ValueType */
 /** @typedef {import("./SharedTypes.js").PlacementType} PlacementType */
@@ -57,7 +57,7 @@ export class SPrimitive {
      *
      * @returns
      */
-    matchPrimitiveUnits(u: import("./formula/Units").UnitStore): any;
+    matchPrimitiveUnits(u: import("./formula/Units").UnitStore): number | undefined;
     clone(): SPrimitive;
     innerClone(_p: any): void;
     clearCached(): void;
@@ -69,11 +69,11 @@ export class SPrimitive {
     calculateValue(): ValueType;
     createIds(): void;
     /**
-     * @param {Material} length
+     * @param {Material=} length
      *
      * @return {ValueType[]}
      */
-    getPastValues(length: Material): ValueType[];
+    getPastValues(length?: Material | undefined): ValueType[];
     /**
      * @param {Material} delay
      * @param {ValueType=} defaultValue
@@ -96,7 +96,7 @@ export class SPrimitive {
      * @param {any} tree
      * @param {Map} neighborhood
      */
-    setEquation(tree: any, neighborhood: Map): void;
+    setEquation(tree: any, neighborhood: Map<any, any>): void;
 }
 export class Placeholder extends SPrimitive {
     /**
@@ -204,12 +204,12 @@ export class SPopulation extends SPrimitive {
     /** @type {any} */
     agentBase: any;
     constructorFunction: typeof SPopulation;
-    vector: Vector<any>;
+    vector: Vector<never>;
     collectData(): {
         instanceId: string;
         connected: string[];
         location: Vector<any>;
-        state: SState[];
+        state: SState[] | null;
     }[];
     /**
      * @returns {Set<string>}
@@ -257,7 +257,7 @@ export class SAgent {
         [x: string]: SPrimitive;
     };
     simulate: any;
-    vector: Vector<any>;
+    vector: Vector<never>;
     createIds(): void;
     /**
      * @returns {string}

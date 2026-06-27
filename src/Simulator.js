@@ -416,7 +416,7 @@ export class Simulator {
             this.setStatus("PAUSED");
             this.shouldUpdateValues = false;
           }
-          
+
           if (this.config.onPause) {
             setTimeout(() => {
               let res = formatSimResults(this.results);

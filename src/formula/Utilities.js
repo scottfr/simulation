@@ -33,7 +33,7 @@ export function selectFromMatrix(mat, simulate, items, fill) {
   let selectorCount = items.length;
 
   /**
-   * @param {any} m 
+   * @param {any} m
    * @returns {Vector}
    */
   function vectorize(m) {

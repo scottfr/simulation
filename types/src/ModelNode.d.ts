@@ -1,5 +1,5 @@
-/** @typedef {import("../../simulation/src/SharedTypes.js").GraphNode} GraphNode */
-/** @typedef {import("../../simulation/src/SharedTypes.js").PrimitiveNameType} PrimitiveNameType */
+/** @typedef {import("./SharedTypes.js").GraphNode} GraphNode */
+/** @typedef {import("./SharedTypes.js").PrimitiveNameType} PrimitiveNameType */
 export function modelNodeClone(node: any, parent: any): ModelNode;
 /**
  * @param {ModelNode} root
@@ -9,7 +9,7 @@ export function modelNodeClone(node: any, parent: any): ModelNode;
  */
 export function primitives(root: ModelNode, type?: (PrimitiveNameType | PrimitiveNameType[]) | undefined): GraphNode[];
 export class ModelNode {
-    attributes: any;
+    attributes: Map<any, any>;
     /** @type {ModelNode} */
     parent: ModelNode;
     /** @type {ModelNode[]} */
@@ -31,8 +31,8 @@ export class ModelNode {
         y: number;
         width: number;
         height: number;
-        sourcePoint: any;
-        targetPoint: any;
+        sourcePoint: null;
+        targetPoint: null;
     };
     /** @type {string} */
     style: string;
@@ -53,10 +53,10 @@ export class ModelNode {
     getAttribute(x: string): string;
     setAttribute(x: any, value: any): void;
     getValue(): {
-        removeAttribute: (name: any) => any;
+        removeAttribute: (name: any) => boolean;
     };
     toString(indent?: number): any;
 }
-export type GraphNode = import("../../simulation/src/SharedTypes.js").GraphNode;
-export type PrimitiveNameType = import("../../simulation/src/SharedTypes.js").PrimitiveNameType;
+export type GraphNode = import("./SharedTypes.js").GraphNode;
+export type PrimitiveNameType = import("./SharedTypes.js").PrimitiveNameType;
 import { Primitive } from "./api/Blocks.js";

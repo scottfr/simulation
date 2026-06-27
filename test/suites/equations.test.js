@@ -175,10 +175,18 @@ end if`, 2);
   check(`x<-3 #set x
 x`, 3);
 
-  check("2+2\n2+3", 5);
+  check(`2+2
+2+3`, 5);
   check("2+2\r\n2+3\r\n\n4+6", 10);
-  check("2+2\n2+3\n1#abfds\n4+6#abc", 10);
-  check("2+2\n/*\n2+3\n*/1#abfds\n4+6#abc", 10);
+  check(`2+2
+2+3
+1#abfds
+4+6#abc`, 10);
+  check(`2+2
+/*
+2+3
+*/1#abfds
+4+6#abc`, 10);
 });
 
 
@@ -256,6 +264,8 @@ test("ifthenelse()", () => {
   failure("ifthenelse()");
   failure("ifthenelse(1)");
   failure("ifthenelse(1,2)");
+  check("ifthenelse(false, 1/0, 2)", 2);
+  check("ifthenelse(true, 2, 1/0)", 2);
 });
 
 
@@ -284,9 +294,11 @@ test("Rounding", () => {
   check("sum(round({1.1, 2.8}))", 4);
   check("ceiling(pi*10)", 32);
   failure("ceiling()");
+  failure("ceiling({1 meter} + {10 centimeters})", "explicitly set");
   check("sum(ceiling({1.1, 2.1}))", 5);
   check("floor(1.9)", 1);
   failure("floor()");
+  failure("floor({1 meter} + {10 centimeters})", "explicitly set");
   check("sum(floor({1.1,2.9}))", 3);
 });
 
@@ -328,7 +340,7 @@ test("Misc", () => {
 
   check("2*3/2", 3);
   check("2*3/4", 1.5);
-  
+
   check("\n\n2+2", 4);
   check("2+2\n\n", 4);
   check("\n\n2+2\n\n", 4);
@@ -345,6 +357,7 @@ test("Misc", () => {
   check("sqrt(4)", 2);
   failure("sqrt (4)");
   check("sqrt({4 meters^2}) * {1 1/meters}", 2);
+  failure("sqrt(-1)", "greater than or equal to 0");
   failure("{1,2}.constructor", "not in vector");
   failure("{a: 1}.constructor", "not in vector");
   check("{4 meters^2}^.5 * {1 1/meters}", 2);
@@ -354,17 +367,24 @@ test("Misc", () => {
   check("log(100)", 2);
   check("log(1000)", 3);
   check("log(0.1)", -1);
+  check("log(0) < -1e10", 1);
+  failure("log(-1)", "greater than or equal to 0");
   failure("log()");
   failure("log({1 cow})");
   failure("log({1 cow})", /does not accept units/);
   check("sum(flatten(log({100, {10, 1000} })))", 6);
   check("ln(e^5)", 5);
   check("ln(exp(5))", 5);
+  check("ln(0) < -1e10", 1);
+  failure("ln(-1)", "greater than or equal to 0");
   failure("ln(exp({5 Cows}))", /does not accept units/);
   failure("ln(exp({5 Cows}))", /Cows/);
   check("factorial(3)", 6);
+  check("factorial(0)", 1);
   failure("factorial()");
   failure("factorial({1 cow})");
+  failure("factorial(-1)", "0 or larger");
+  failure("factorial(1.5)", "only accepts integers");
   check("sum(factorial({1,3}))", 7);
   check("0.1+0.2", 0.3);
   check("1e2", 100);
@@ -378,9 +398,9 @@ test("Misc", () => {
 
 
   check(`1
-  3`, 3);
+3`, 3);
   check(`a<-1.2
-  {ceiling(a)}{1}`, 2);
+{ceiling(a)}{1}`, 2);
 
   testConfig.globals = "testfn(a,b) <- a^2 + b^2";
   check("testfn(1,3)", 10);
@@ -398,27 +418,38 @@ test("Misc", () => {
   check("min({1,2}, {0, 6})", [0, 2]);
 
   failure("cos()");
+  check("cos({0 radians})", 1);
   check("sum(cos({pi,pi/2}))", -1);
   failure("cos({1 cow})");
   failure("sin()");
   failure("sin(true)");
+  check("sin({pi/2 radians})", 1);
   check("sum(sin({pi,pi/2}))", 1);
   failure("sin({1 cow})");
   failure("tan()");
+  check("tan({pi/4 radians})", 1);
   check("sum(tan({pi/4}))", 1);
   failure("tan({1 cow})");
   failure("acos()");
   failure("acos({1 cow})");
+  failure("acos(2)", "between -1 and 1");
   failure("asin()");
   failure("asin({1 cow})");
+  failure("asin(-2)", "between -1 and 1");
   failure("atan()");
   failure("atan({1 cow})");
   failure("arccos()");
   failure("arccos({1 cow})");
+  failure("arccos(2)", "between -1 and 1");
   failure("arcsin()");
   failure("arcsin({1 cow})");
+  failure("arcsin(-2)", "between -1 and 1");
   failure("arctan()");
   failure("arctan({1 cow})");
+  check("round(acos(-1)*1000000)", Math.round(Math.PI * 1000000));
+  check("round(asin(1)*1000000)", Math.round(Math.PI / 2 * 1000000));
+  check("round(arccos(-1) / {1 radians} * 1000000)", Math.round(Math.PI * 1000000));
+  check("round(arcsin(1) / {1 radians} * 1000000)", Math.round(Math.PI / 2 * 1000000));
   check("cos(acos(.7))", 0.7);
   check("cos(acos({.7})){1}", 0.7);
   failure("{1, 2, 3} {1}");
@@ -540,7 +571,9 @@ test("Misc", () => {
 
   check("if 1+1 > 1 then \n 10 \n end if", 10);
   check("if 1+1 > 1 then \n\n\n 10 \n\n\nend if", 10);
-  check("if 1+1>3 then\n10\nend if", 0);
+  check(`if 1+1>3 then
+  10
+end if`, 0);
 
   check("if true then \n 2 \n else \n  \n end if", 2);
   check("if true\n 2 \n else \n  \n end if", 2);
@@ -557,36 +590,116 @@ test("Misc", () => {
   check("if true then \n  \n else \n 2 \n end if", 0);
   check("if true then \n  \n else \n  \n end if", 0);
 
-  check("if 1+1>1 then\n10\nelse\nx<-5\nx^2\nend if", 10);
-  check("if 1+1>1 then\n10\nelse\n\nx<-5\nx^2\nend if", 10);
-  check("if 1+1>3 then\n10\nelse\nx<-5\nx^2\nend if", 25);
+  check(`if 1+1>1 then
+  10
+else
+  x<-5
+  x^2
+end if`, 10);
+  check(`if 1+1>1 then
+  10
+else
 
-  check("if 1+1>1 then\n10\nelse if 4>3 then\n 6\nelse\nx<-5\nx^2\nend if", 10);
-  check("if 0>1 then\n10\nelse if 4>3 then\n 6\nelse\nx<-5\nx^2\nend if", 6);
-  check("if 0>1 then\n10\nelse if 2>3 then\n 6\nelse\nx<-5\nx^2\nend if", 25);
+  x<-5
+  x^2
+end if`, 10);
+  check(`if 1+1>3 then
+  10
+else
+  x<-5
+  x^2
+end if`, 25);
+
+  check(`if 1+1>1 then
+  10
+else if 4>3 then
+  6
+else
+  x<-5
+  x^2
+end if`, 10);
+  check(`if 0>1 then
+  10
+else if 4>3 then
+  6
+else
+  x<-5
+  x^2
+end if`, 6);
+  check(`if 0>1 then
+  10
+else if 2>3 then
+  6
+else
+  x<-5
+  x^2
+end if`, 25);
 
   failure("{1cow}");
 
-  check("function xkk(a)\na<-a*2\na<-a*3\na\nend function\nxkk(4)", 24);
-  check("function xkk(a)\n\nend function\nxkk(4)", 0);
-  check("xkk <- function(a)\n\nend function\nxkk(4)", 0);
-  failure("function xkk(a)\njkk<-100\na<-a*2\na<-a*3\na\nend function\nxkk(4)\njkk");
+  check(`function xkk(a)
+  a<-a*2
+  a<-a*3
+  a
+end function
+xkk(4)`, 24);
+  check(`function xkk(a)
 
-  check("1\n 2\n 3", 3);
-  check("1\n return(2)\n 3", 2);
-  check("if true then\n 5\n end if\n return 6", 6);
-  check("if true then\n return 5\n end if\n return 6", 5);
+end function
+xkk(4)`, 0);
+  check(`xkk <- function(a)
 
-  check("function test()\n 1\n 2\n end function\n test()*3", 6);
-  check("function test()\n return 1\n 2\n end function\n test()*3", 3);
+end function
+xkk(4)`, 0);
+  failure(`function xkk(a)
+  jkk<-100
+  a<-a*2
+  a<-a*3
+  a
+end function
+xkk(4)
+jkk`);
+
+  check(`1
+2
+3`, 3);
+  check(`1
+return(2)
+3`, 2);
+  check(`if true then
+  5
+end if
+return 6`, 6);
+  check(`if true then
+  return 5
+end if
+return 6`, 5);
+
+  check(`function test()
+  1
+  2
+end function
+test()*3`, 6);
+  check(`function test()
+  return 1
+  2
+end function
+test()*3`, 3);
 
   check("", 0);
   check(" ", 0);
   check("# abc\n \n\n/*43*/", 0);
 
 
-  failure("function a(x)\naVal <- 10\nb(x)\nend function\nfunction b(x)\nx+aVal\nend Function\na(2)");
-  
+  failure(`function a(x)
+  aVal <- 10
+  b(x)
+end function
+function b(x)
+  x+aVal
+end Function
+a(2)`);
+
   testConfig.globals = "";
 });
 
@@ -650,6 +763,32 @@ test("Vectors", () => {
   check("2^ {3,2}", [8, 4]);
   check("{3,4} ^ {3,2}", [27, 16]);
 
+
+
+  check("sum({{2 meters}, {3 meters}} + {{1 meters}, {4 meters}}) / {1 meters}", 10);
+  check("sum({{2 meters}, {3 meters}} + {{100 centimeters}, {4 meters}}) / {1 meters}", 10);
+
+  failure("{{2 meters}, {3 meters}} + {{1 seconds}, {4 meters}}", "Incompatible units");
+  failure("{{2 meters}, {3 meters}} + {{1 seconds}, {4 meters}}", "Meters and Seconds");
+  failure("{{2 meters}, {3 meters}} + {{1 seconds}, {4 meters}}", "{2 meters} + {1 seconds}");
+  failure("{a: {2 meters}, b: {3 meters}} + {a: {1 meters}, b: {1 seconds}}", "Incompatible units");
+  failure("{a: {2 meters}, b: {3 meters}} + {a: {1 meters}, b: {1 seconds}}", "{3 meters} + {1 seconds}");
+
+
+  failure("{{2 meters}, {3 meters}} + 3", "Incompatible units");
+  failure("{{2 meters}, {3 meters}} + 3", "Consider replacing 3 with {3 meters}");
+
+
+  check("{'a', 'b'} + {'c', 'd'}", ["ac", "bd"]);
+  check("({'a', 'b'} + {'c', 'd'}){1}.upperCase()", "AC");
+  check("{'a', 'b'} + 'z'", ["az", "bz"]);
+  check("'z' + {'a', 'b'}", ["za", "zb"]);
+  check("{'a', 'b'} + {1, 2}", ["a1", "b2"]);
+  check("{1, 2} + {'a', 'b'}", ["1a", "2b"]);
+  check("{a: 'x', b: 'y'} + {a: '1', b: '2'}", { a: "x1", b: "y2" });
+  check("{'a', {'b', 'c'}} + {'x', {'y', 'z'}}", ["ax", ["by", "cz"]]);
+  check("{'val: '} + {3 meters}", ["val: {3 meters}"]);
+
   check("count(1,2, {4,5} )", 4);
   check("join(1,2, {4,5} ).length()", 4);
   check("min(1,2, {-1,5} )", [-1, 1]);
@@ -657,15 +796,35 @@ test("Vectors", () => {
   check("min( {2,5} ,3,4)", [2, 3]);
   check("max( {4,5} ,3,4.5)", [4.5, 5]);
   check("join(1,2, {4,5} )", [1, 2, 4, 5]);
+
   check("select( {4,5} , 2)", 5);
   check("select( {4,5} ,  {2} )", [5]);
-  check("select( {4,5} ,  {true,false} )", [4]);
+  check("select( {4,5} ,  {2, 1} )", [5, 4]);
+  check("select( {4,5} ,  {true, false} )", [4]);
+  failure("select( {4,5} ,  {true} )", "Length of vector must be equal");
+  failure("select({4, 5}, -1)", "out of range");
+  failure("select({4, 5}, {-1})", "out of range");
+  failure("select({4, 5}, 0)", "Vector indexes are 1-based");
+  failure("select({4, 5}, {0})", "Vector indexes are 1-based");
+  failure("select({4, 5}, 1.5)", "must be an integer");
+  failure("select({4, 5}, {1.5})", "must be an integer");
+  failure("select({4, 5}, {1 cow})", "does not accept units");
+  failure("select({4, 5}, {{1 cow}})", "does not accept units");
+
   check("filter({4,5,6,1,7}, x>4)", [5, 6, 7]);
   check("filter({4,5,6,1,7}, function(i) i>4)", [5, 6, 7]);
-  check("map<-3\nfilter({4,5,6,1,7}, x>4)", [5, 6, 7]);
-  check("map<-3\nfilter({4,5,6,1,7}, x>4)\nmap", 3);
-  check("z <- {1,2,3}\nfilter(z, x>1)", [2, 3]);
-  check("z <- {1,2,3}\nmap(z, x^2)\nz", [1, 2, 3]);
+  check("filter({}, true)", []);
+  failure("filter(1, true)", "requires a vector");
+  check(`map<-3
+filter({4,5,6,1,7}, x>4)`, [5, 6, 7]);
+  check(`map<-3
+filter({4,5,6,1,7}, x>4)
+map`, 3);
+  check(`z <- {1,2,3}
+filter(z, x>1)`, [2, 3]);
+  check(`z <- {1,2,3}
+map(z, x^2)
+z`, [1, 2, 3]);
   check("{4,5,6,1,7}.filter(x>4)", [5, 6, 7]);
   check("{4,5,6,1,7}.filter(function(i) i>4)", [5, 6, 7]);
 
@@ -714,8 +873,10 @@ test("Vectors", () => {
   check("sum(abs({1,-2}))", 3);
   check("sum({1,-2}.abs())", 3);
 
-  check("a<-6\n {a cows}*{1 1/cows}", 6);
-  check("a<-6\n {a+1 cows}*{1 1/cows}", 7);
+  check(`a<-6
+{a cows}*{1 1/cows}`, 6);
+  check(`a<-6
+{a+1 cows}*{1 1/cows}`, 7);
   failure("{{1 sheep} cows}");
   failure("{{x sheep} cows}");
   failure("{1cows} * {1 1/cows}");
@@ -727,12 +888,16 @@ test("Vectors", () => {
   check("({1 year}*3)/{1 year}", 3);
 
   check("({a:1, aa: 2,b:3}.keys()=={'a','aa','b'}){1}", 1);
+  check("{}.keys().count()", 0);
   check("{1,2,3}.keys().length()", 0);
   check("({a:1, aa:2,b:3}.values()){1}", 1);
+  check("{}.values().count()", 0);
   failure("({a:1,aa:2,b:3}.values()){'a'}");
 
   check("map({4,5}, x^2)",  [16, 25]);
   check("map({4,5}, function(i) \n z<-i+i \n z*2 \n end function)",  [16, 20]);
+  check("map({}, x^2)",  []);
+  failure("map(1, x)", "requires a vector");
   check("{4, 5}.map(x^2)",  [16, 25]);
   check("{4, 5}.map(mean)",  [4, 5]);
   check("{4, 5}.map(function(i) \n z<-i+i \n z*2 \n end function)",  [16, 20]);
@@ -751,6 +916,11 @@ test("Vectors", () => {
   failure( "repeat(x+1, {'a': 1, 'b': 2})", "can't have names");
 
   check("indexof({4,3,1}, 1)",  3);
+  failure("indexof({{4 cow},3,1}, 1)",  "Incompatible units");
+  check("indexof({{4 cow},{3 cow}, {1 cow}}, {3 cow})",  2);
+  check("indexof({{4 meter},{3 meters}, {1 meter}}, {3 meter})",  2);
+  check("indexof({{4 meter},{300 centimeters}, {1 meter}}, {3 meter})",  2);
+  check("indexof({{4 cow},{3 cow}, {2 cow}}, {1 cow})", 0);
   check("{4,3,1}.indexOf(1)",  3);
   check("indexof({4,3,1},{1,44,3})",  [3, 0, 2]);
   check("flatten({4,3,1},{1,44,3})",  [4, 3, 1, 1, 44, 3]);
@@ -758,9 +928,17 @@ test("Vectors", () => {
   check("{4,3,1,{1,44,3} }.flatten()",  [4, 3, 1, 1, 44, 3]);
   check("flatten({4,{3},1,{1,{44,3}} })",  [4, 3, 1, 1, 44, 3]);
   check("flatten({4,3,1,1,44,3 })",  [4, 3, 1, 1, 44, 3]);
+  check("sample({}, 0).count()",  0);
+  failure("sample({}, 1)", "non-empty vector");
   check("count(sample({4,3,1,1,44,3 },5))",  5);
   check("sample({4,3,1,1,44,3 }, 5).count()",  5);
+  check("sample({4,3,1,1,44,3 }, 0).count()",  0);
+  failure("sample({4,3,1,1,44,3 }, {5 cow}).count()", "does not accept units");
+  failure("sample({4,3,1,1,44,3 }, {1, 2}).count()", "does not accept vectors ");
+  failure("sample({4,3,1,1,44,3 }, -5).count()", "must be greater than or equal to 0.");
+  failure("sample({4,3}, 3).count()", "too small");
   check("count(sample({4,3,1,1,44,3 },6,true))",  6);
+  check("count(sample({4,3}, 3, true))",  3);
   check("count(sample({4,3,1,1,44,3,4,5,6,7 },7,false))",  7);
   check("{4,3,1,1,44,3 }.sample(5).length()",  5);
   check("{4,3,1,1,44,3 }.sample(6,true).length()",  6);
@@ -772,6 +950,8 @@ test("Vectors", () => {
   check("unique({4,2,3},1,2)",  [4, 2, 3, 1]);
   check("{4,2,3,1,2}.unique()",  [4, 2, 3, 1]);
   check("unique({1,{1,2},{3,4},{1,2}})", [1, [1, 2], [3, 4]]);
+  check("fill({}, 7)", []);
+  check("contains({}, 1)",  0);
   check("contains({4,3,2}, 1)",  0);
   check("contains({5, 4,3,2}, 3)",  1);
   check("contains({4,{ x: 5 },2}, 3)",  0);
@@ -779,7 +959,12 @@ test("Vectors", () => {
   check("contains({4,{ x: 5, y: {99} },2}, 98)",  0);
   check("contains({4,{ x: 5, y: {99} },2}, 99)",  1);
   check("contains({4,8,9,{1,2,3,4,5},2}, 5)",  1);
+  check("contains({{4 cow},{3 cow}, {1 cow}}, {3 cow})",  1);
+  check("contains({{4 meter},{3 meters}, {1 meter}}, {3 meter})",  1);
+  check("contains({{4 meter},{300 centimeters}, {1 meter}}, {3 meter})",  1);
+  check("contains({{4 cow},{3 cow}, {2 cow}}, {1 cow})", 0);
   failure("contains(4, 4)");
+  failure("contains({1, 2}, {1})");
   check("{'a','b'}.contains('b')", 1);
   check("{'a','b'}.contains('c')", 0);
   check("{'a','b'}.indexof('c')", 0);
@@ -793,12 +978,18 @@ test("Vectors", () => {
   failure("sum(true)");
   failure("1/count({})");
 
-  check("z<-1.2\n round(z)-z", -.2);
-  check("z<-{1,3}\n z*2+z", [3, 9]);
-  check("z<-{1,3}\n 2*z+z", [3, 9]);
-  check("z<-{1,3}\n z+2*z", [3, 9]);
-  check("z<-{1,3}\n z+z*2", [3, 9]);
-  check("z<-{1,3}\n z+z*2*z", [3, 21]);
+  check(`z<-1.2
+round(z)-z`, -.2);
+  check(`z<-{1,3}
+z*2+z`, [3, 9]);
+  check(`z<-{1,3}
+2*z+z`, [3, 9]);
+  check(`z<-{1,3}
+z+2*z`, [3, 9]);
+  check(`z<-{1,3}
+z+z*2`, [3, 9]);
+  check(`z<-{1,3}
+z+z*2*z`, [3, 21]);
 
 
   check("repeat(ifthenelse(x mod 2,1,0), 3)",  [1, 0, 1]);
@@ -822,6 +1013,7 @@ test("Units", () => {
   check("{1,2,3}.stdDev()", 1);
   check("stddev({1 cow}, {2 cow}, {3 cow})*{1 1/cow}", 1);
   failure("stddev({1 cow}, {1 pig})");
+  failure("stddev({1})", "at least two");
   check("product(1,2,3)", 6);
   check("{1,2,3}.product()", 6);
   check("unitless(product({1 cow}, {2 cow}, {4 cow})*{1 1/cow})", 8);
@@ -863,6 +1055,32 @@ test("Units", () => {
   failure("removeUnits({1 cow}, 'minutes')", "Incompatible units");
 
   check("removeUnits({a: {2 hours}, b: {60 minutes}}, 'hours')", {a: 2, b: 1});
+
+  check("rand({2 meters}, {2 meters}) * {1 1/meter}", 2);
+  check("rand({100 centimeters}, {1 meter}) * {1 1/meter}", 1);
+  failure("rand({1 meter}, {1 second})", "Incompatible units");
+  failure("rand({1 meter}, 2)", "Incompatible units");
+
+  check("randTriangular({1 meter}, {3 meters}, {2 meters}) >= {1 meter}", 1);
+  check("randTriangular({1 meter}, {3 meters}, {2 meters}) <= {3 meters}", 1);
+  failure("randTriangular({1 meter}, {3 seconds}, {2 meters})", "Incompatible units");
+  failure("randTriangular(2, {3 seconds}, {2 meters})", "Incompatible units");
+  failure("randTriangular(3, 2, 2)", "Maximum must be greater than the minimum");
+  failure("randTriangular(1, 2, 3)", "peak must be within");
+
+  check("randDist({{{1 meter}, 1}, {{3 meters}, 1}}) >= {1 meter}", 1);
+  check("randDist({{{1 meter}, 1}, {{3 meters}, 1}}) <= {3 meters}", 1);
+  failure("randDist({{{1 meter}, 1}, {{1 second}, 1}})", "Incompatible units");
+  failure("randDist({{{1 meter}, 1}, {2, 1}})", "Incompatible units");
+  failure("randDist({{{1 meter}, {1 cow}}, {{3 meters}, 1}})", "does not accept units for the Y values");
+
+  check("randDist({{1 meter}, {3 meters}}, {1, 1}) >= {1 meter}", 1);
+  check("randDist({{1 meter}, {3 meters}}, {1, 1}) <= {3 meters}", 1);
+  failure("randDist({{1 meter}, {1 second}}, {1, 1})", "Incompatible units");
+  failure("randDist({{1 meter}, 2}, {1, 1})", "Incompatible units");
+  failure("randDist({1, -1}, {1, 1})", "must not decrease");
+  failure("randDist({1, 2}, {1})", "same");
+  failure("randDist({1, 2}, {-1, 1})", "cannot be negative");
 });
 
 
@@ -872,6 +1090,8 @@ test("Vector aggregation", () => {
   check("correlation( {1,1,1} ,  {.5,1,2} )", 0);
   check("correlation( {1,2,4} ,  {1,1,1} )", 0);
   failure("correlation(1,  {.5,1,2} )");
+  failure("correlation({1}, {1})", "at least two");
+  failure("correlation({1,2}, {1})", "same size");
   check("correlation( {1,2,4} ,  {-.5,-1,-2} )", -1);
   check("round(correlation( {1,3,2} ,  {2,4,2} )*1000)", 866);
 
@@ -892,6 +1112,10 @@ test("Vector aggregation", () => {
   check("mean({ {1,2}, {3,4}, {2,6} })", 3);
   check("max({ {1,2}, {3,4}, {-1,5} })", 5);
   check("min({ {1,2}, {3,4}, {-1,5} })", -1);
+  failure("max({})", "at least one");
+  failure("min({})", "at least one");
+  failure("median({})", "at least one");
+  failure("stddev({})", "at least two");
   check("max({ 1, {1, 2} }, {-1, {3,1} } )", [1, [3, 2]] );
   check("mean( {1,2}, {3,4}, {2,6} )", [2, 4]);
   check("max( {1,2}, {3,4}, {-1,5} )", [3, 5]);
@@ -901,7 +1125,9 @@ test("Vector aggregation", () => {
 
   check("{a:3,b:4,c:5}{2}", 4);
   check("{\n\na\n\n\n:\n\n\n3\n\n\n,\n\n\nb\n\n\n:4,c\n\n\n:5\n\n}{2}", 4);
-  check("{1,\n4\n,5}{2}", 4);
+  check(`{1,
+4
+,5}{2}`, 4);
 
 
   check("{ {1,2}, {3,4}, {-1,5} }{ {false, false, true}, 1}", [-1]);
@@ -914,12 +1140,17 @@ test("Vector aggregation", () => {
   check("median({ {'b': 1, 'c':2}, {3, 4,3}, {2, 6} })", 3);
 
   check("union({1,2,3}, {2,3,4})", [1, 2, 3, 4]);
+  check("union({}, {})", []);
+  check("union({{1 meter}, {200 centimeters}, {3 meters}}, {{2 meter}, {3 meters}, {4 meters}}) / {1 meter}", [1, 2, 3, 4]);
+  failure("union({{1 meter}, {200 centimeters}, 3}, {{2 meter}, {3 meters}, {4 meters}}) / {1 meter}", "Incompatible units");
   check("{1,2,3}.union({2,3,4})", [1, 2, 3, 4]);
   failure("union(1,2)");
   failure("union(true,false)");
   check("intersection({1,2,3}, {2,3,4})", [2, 3]);
+  check("intersection({1,2}, {})", []);
   check("{1,2,3}.intersection({2,3,4})", [2, 3]);
   check("difference({1,2,3}, {2,3,4})", [1, 4]);
+  check("difference({}, {})", []);
   check("{1,2,3}.difference({2,3,4})", [1, 4]);
   check("difference({1},{1})", []);
 
@@ -936,23 +1167,124 @@ test("Vector aggregation", () => {
   failure("lookup(18, {1,2}, {4})");
   failure("lookup(18, {}, {})");
 
-  check("Delays <- function()\nres <- {k: 1}\nres.k <- res.k + 1\nreturn res\nend function\ndelays()\ndelays().k", 2); // Make sure the res array is initialized each time in the function
+  check(`Delays <- function()
+  res <- {k: 1}
+  res.k <- res.k + 1
+  return res
+end function
+delays()
+delays().k`, 2); // Make sure the res array is initialized each time in the function
 
-  check("a <- 10\nWhile a < 20\n    a <- a+1\nEnd loop\n a^2", 400);
+  check(`a <- 10
+While a < 20
+  a <- a+1
+End loop
+a^2`, 400);
   failure("\nWhile false\n    \nEnd loop\n ");
   check("\nWhile false\n  //foo  \nEnd loop\n ", 0);
   check("for x in {1,2,3}\n    \nEnd loop\n ", 0);
-  check("for x from 1 to 3\n    \nEnd loop\n ", 0);
-  check("a <- 10\n\nWhile a < 20\n\n\n    a <- a+1\n\n\nEnd loop\n\n a^2", 400);
-  failure("a <- 10\nWhile a < 20\n    s<-1\n    a <- a+1\nEnd loop\n s");
-  check("q <- {}\nfor s in repeat(x^2,3)\nq<-join(q,s+1)\nend loop\nq", [2, 5, 10]);
-  check("q <- {}\nfor s in repeat(x^2,3)\nj<-s+1\nq<-join(q,j)\nend loop\nq", [2, 5, 10]);
-  check("vec <- { }\nFor s from 1 to 3\nvec <- join(vec, s*2)\nEnd loop\nvec", [2, 4, 6]);
-  check("vec <- { }\nFor s from 1 to(3)\nvec <- join(vec, s*2)\nEnd loop\nvec", [2, 4, 6]);
-  check("vec <- { }\nFor s from 1 to 3\n\nvec <- join(vec, s*2)\n\nEnd loop\nvec", [2, 4, 6]);
-  check("vec <- { }\nFor s from 1 to 3\nq<-s*2\nvec <- join(vec, q)\nEnd loop\nvec", [2, 4, 6]);
-  check("vec <- { }\nFor s from 1 to 3 by 2\nvec <- join(vec, s*2)\nEnd loop\nvec", [2, 6]);
-  check("vec <- { }\nFor s from 1 to -3 by -2\nvec <- join(vec, s)\nEnd loop\nvec", [1, -1, -3]);
+  check(`
+for x from 1 to 3
+
+End loop
+    
+`, 0);
+  check(`a <- 10
+
+While a < 20
+
+
+  a <- a+1
+
+
+End loop
+
+a^2`, 400);
+  failure(`a <- 10
+While a < 20
+  s<-1
+  a <- a+1
+End loop
+s`);
+  check(`q <- {}
+for s in repeat(x^2,3)
+  q<-join(q,s+1)
+end loop
+q`, [2, 5, 10]);
+  check(`q <- {}
+for s in repeat(x^2,3)
+  j<-s+1
+  q<-join(q,j)
+end loop
+q`, [2, 5, 10]);
+  check(`vec <- { }
+For s from 1 to 3
+  vec <- join(vec, s*2)
+End loop
+vec`, [2, 4, 6]);
+  check(`vec <- { }
+For s from 1 to(3)
+  vec <- join(vec, s*2)
+End loop
+vec`, [2, 4, 6]);
+  check(`vec <- { }
+For s from 1 to 3
+
+  vec <- join(vec, s*2)
+
+End loop
+vec`, [2, 4, 6]);
+  check(`vec <- { }
+For s from 1 to 3
+  q<-s*2
+  vec <- join(vec, q)
+End loop
+vec`, [2, 4, 6]);
+  check(`vec <- { }
+For s from 1 to 3 by 2
+  vec <- join(vec, s*2)
+End loop
+vec`, [2, 6]);
+  check(`vec <- { }
+For s from 1 to -3 by -2
+  vec <- join(vec, s)
+End loop
+vec`, [1, -1, -3]);
+  check(`vec <- { }
+For s from {1 meter} to {3 meters}
+  vec <- join(vec, s/{1 meter})
+End loop
+vec`, [1, 2, 3]);
+  check(`vec <- { }
+For s from {1 meter} to {3 meters} by {1 meter}
+  vec <- join(vec, s/{1 meter})
+End loop
+vec`, [1, 2, 3]);
+  check(`vec <- { }
+For s from {1 meter} to {300 centimeters} by {100 centimeters}
+  vec <- join(vec, s/{1 meter})
+End loop
+vec`, [1, 2, 3]);
+  check(`vec <- { }
+For s from {3 meters} to {1 meter} by {-1 meter}
+  vec <- join(vec, s/{1 meter})
+End loop
+vec`, [3, 2, 1]);
+  failure(`For s from 1 to 3 by 0
+  1
+End loop`, "step size of a For loop must not be 0");
+  failure(`For s from {1 meter} to {3 days} by {1 meter}
+  1
+end loop`, "Incompatible units");
+  failure(`For s from {1 meter} to 3 by {1 meter}
+  1
+End loop`, "Incompatible units");
+  failure(`For s from {1 meter} to {3 meter} by 1
+  1
+End loop`, "Incompatible units");
+  failure(`For s from 'a' to 3
+  1
+End loop`, "start value of a For loop must be a number");
 
   check("2:2", [2]);
   check("1:3", [1, 2, 3]);
@@ -967,9 +1299,18 @@ test("Vector aggregation", () => {
   check("{1 meter}:{2 meters}=={{1 meter}, {2 meters}}", [true, true]);
   failure("{1 meter}:{2 cow}");
 
-  check("a <- {1,2}\n b <- {3,4}\n c <- a+b\n b{1}", 3);
-  check("a <- {1,2}\n b <- {3,4}\n c <- a*b\n a{1}", 1);
-  check("a <- {1,2}\n b <- {3,4}\n c <- -a\n a{1}", 1);
+  check(`a <- {1,2}
+b <- {3,4}
+c <- a+b
+b{1}`, 3);
+  check(`a <- {1,2}
+b <- {3,4}
+c <- a*b
+a{1}`, 1);
+  check(`a <- {1,2}
+b <- {3,4}
+c <- -a
+a{1}`, 1);
 
   testConfig.globals = "a <- {\"a\": {\"x\": -1, \"y\": -2, \"z\": -3}, \"b\": {\"x\": 11, \"y\": 12, \"z\": 13} }";
   check("a{1, 2}", -2);
@@ -991,7 +1332,9 @@ test("Vector aggregation", () => {
   check("a{max, \"Z\" } ", 13);
   check("a{min, \"z\" } ", -3);
 
-  testConfig.globals = "a <- {\"a\": {\"x\": -1, \"y\": -2, \"z\": -3}, \"b\": {\"x\": 11, \"y\": 12, \"z\": 13} }\n range(x) <- max(x)-min(x)\n aa <- {}";
+  testConfig.globals = `a <- {"a": {"x": -1, "y": -2, "z": -3}, "b": {"x": 11, "y": 12, "z": 13} }
+range(x) <- max(x)-min(x)
+aa <- {}`;
   check("aa.cat <- 10\n aa.cat ", 10);
   check("a{range, \"z\" } ", 16);
   check("a{\"a\", range } ", 2);
@@ -1062,13 +1405,22 @@ test("Vector aggregation", () => {
   check("collapse({\"a\": {\"x\": {\"j\": -3, \"k\":3},\"y\":{\"j\": 1, \"k\":7}}, \"b\":{\"x\":{\"j\": 3, \"k\":4},\"y\":{\"j\": 7, \"k\":-3}}, \"c\":{\"x\":{\"j\": 11, \"k\":1},\"y\":{\"j\": 2, \"k\":3}}}, {\"x\":0, \"y\":9})", {x: 19, y: 17});
   check("collapse({\"a\": {\"x\": {\"j\": -3, \"k\":3},\"y\":{\"j\": 1, \"k\":7}}, \"b\":{\"x\":{\"j\": 3, \"k\":4},\"y\":{\"j\": 7, \"k\":-3}}, \"c\":{\"x\":{\"j\": 11, \"k\":1},\"y\":{\"j\": 2, \"k\":3}}}, {\"a\": {\"j\":0, \"k\":9}, \"b\": {\"j\":1,\"k\":2}, \"c\": {\"j\":1,\"k\":2} }){\"a\"}", {j: -2, k: 10});
   check("collapse({'dogs': {'x': 1, 'y':2}, 'cats': {'x':3, 'y':4} },3)", 10);
+  failure("collapse({'dogs': {'x': {1 cow}, 'y':2}, 'cats': {'x':3, 'y':4} },3)");
+  check("collapse({'dogs': {'x': {1 cow}, 'y':{2 cow}}, 'cats': {'x':{3 cow}, 'y':{4 cow}} },3) / {1 cow}", 10);
 
   testConfig.globals = "";
 });
 
 
 test("Misc functions", () => {
-  check("function fib(n)\n    if n==1 or n==0 then\n        1\n    else\n        fib(n-1)+fib(n-2)\n    end if\nend function\nfib(10)", 89);
+  check(`function fib(n)
+  if n==1 or n==0 then
+    1
+  else
+    fib(n-1)+fib(n-2)
+  end if
+end function
+fib(10)`, 89);
 
   check("'abc \\n \\\\'", "abc \\n \\\\");
   check("\"abc \\n \\\\\"", "abc \n \\");
@@ -1076,23 +1428,57 @@ test("Misc functions", () => {
   check("\"\\x\"", "\\x");
 
   check("'1,2,3'.split(',').join('-')", "1-2-3");
+  check("'abc'.split(',').count()", 1);
+  check("''.split(',').count()", 1);
+  check("{'a','b'}.join('')", "ab");
+  failure("{'a','b'}.join(1)");
   check("'abcd'.indexOf('bc')", 2);
+  check("'abcd'.indexOf('z')", 0);
+  check("''.indexOf('a')", 0);
+  check("'abc'.indexOf('')", 1);
   check("'abcd'.contains('bc')", 1);
   check("'abcd'.contains('s')", 0);
+  check("''.contains('')", 1);
+  check("'abcd'.contains('')", 1);
+  check("''.contains('a')", 0);
   check("'abcd'.range(2)", "b");
   check("'abcd'.range(4:3)", "dc");
+  check("'abcd'.range({1, 3})", "ac");
+  failure("'abcd'.range({1 cow})", "does not accept units");
+  failure("'abc'.range(0)", "out of range");
+  failure("'abc'.range(1.5)", "integer");
+  failure("'abc'.range(4)", "out of range");
+  failure("'abc'.range({1, 4})", "out of range");
+  check("''.trim()", "");
   check("'  abcd '.trim()", "abcd");
+  check("'   '.trim()", "");
   check("'aBcd'.upperCase()", "ABCD");
+  check("''.upperCase()", "");
   check("'aBcd'.lowerCase()", "abcd");
+  check("''.lowerCase()", "");
   check("'aBcd '.length()", 5);
+  check("''.length()", 0);
   check("'aBcd '.trim().length()", 4);
   check("'123.4'.parse()+1", 124.4);
+  failure("'bad'.parse()", "is not a number");
+  failure("''.parse()", "is not a number");
+  failure("'   '.parse()", "is not a number");
+  check("('0' + '1').parse()", 1);
+  check("('1' + '2' + '3').parse()", 123);
+  check("(1 + 'x').length()", 2);
+  check("('x' + 1).uppercase()", "X1");
+  check("('ab' + 'cd').length()", 4);
+  check("('ab' + 'cd').uppercase()", "ABCD");
+  check("('1' + '2').trim().parse()", 12);
 
 
   check("distance({0, 0}, {3, 4})", 5);
   check("removeunits(distance({ {0 meters}, {0 meters} }, { {3 meters}, {4 meters} }), 'meters')", 5);
   check("removeunits(distance({ {0 centimeters}, {0 meters} }, { {300 centimeters}, {4 meters} }), 'meters')", 5);
   check("removeunits(distance({ {0 meters}, {0 centimeters} }, { {3 meters}, {400 centimeters} }), 'meters')", 5);
+  check(`
+  distance({ {0 meters}, {0 meters} }, { {3 kilometers}, {4 kilometers} })
+  removeunits(distance({ {0 kilometers}, {0 meters} }, { {3 meters}, {4 meters} }), 'meters')`, 5);
 
   testConfig.globals = "";
   failure("1.range(4:3)");
@@ -1106,30 +1492,78 @@ test("Misc functions", () => {
 
   // Test Functional
 
-  check("s <- rand\ns=s", 0);
-  check("s <- rand()\ns=s", 1);
-  check("s <- mean\ns(1,2,3)", 2);
+  check(`s <- rand
+s=s`, 0);
+  check(`s <- rand()
+s=s`, 1);
+  check(`s <- mean
+s(1,2,3)`, 2);
   check("q(x) <- max(x)\n s <- q \n s({1,2,3})", 3);
-  check("if true then\nxx<- median\nxx(1,2.1,3.5)\nend if", 2.1);
-  check("if true then\nxx<- median\nxx(1,2.1,3.5)\nelse\n\nend if", 2.1);
-  failure("if true then\nxx<- median\nxx(1,2,3.5)\nend if\nxx(2,3,4.5)");
-  check("xx <- mean\nif true then\nxx<- median\nxx(1,2,3.5)\nend if\nxx(2,3,4.5)", 3);
-  check("function MakeCounter()\ncounter <- 0\nfunction InnerCounter()\ncounter <- counter+1\ncounter\nend function\ninnerCounter\nend function\nc <- makecounter()\nc2 <- makecounter()\nz<-{c(), c(), c2(), c2(), c2(), c()}\nz", [1, 2, 1, 2, 3, 3]);
+  check(`if true then
+  xx<- median
+  xx(1,2.1,3.5)
+end if`, 2.1);
+  check(`if true then
+  xx<- median
+  xx(1,2.1,3.5)
+else
+
+end if`, 2.1);
+  failure(`if true then
+  xx<- median
+  xx(1,2,3.5)
+end if
+xx(2,3,4.5)`);
+  check(`xx <- mean
+if true then
+  xx<- median
+  xx(1,2,3.5)
+end if
+xx(2,3,4.5)`, 3);
+  check(`function MakeCounter()
+  counter <- 0
+  function InnerCounter()
+    counter <- counter+1
+    counter
+  end function
+  innerCounter
+end function
+c <- makecounter()
+c2 <- makecounter()
+z<-{c(), c(), c2(), c2(), c2(), c()}
+z`, [1, 2, 1, 2, 3, 3]);
 
   testConfig.globals = "z<-{n: 210, m: mean, q:1}";
   check("{z.n, z.q}", [210, 1]);
-  check("q<-z.m\nq(1,2)", 1.5);
+  check(`q<-z.m
+q(1,2)`, 1.5);
   check("z.m(1,2)", 1.5);
   check("{max,min}{1}(1,2,3)", 3);
   check("{max,min}{2}(1,2,3)", 1);
   check("map({min, max, median}, x(1,2,3))", [1, 3, 2 ]);
 
-  check("{a:10, b:function(a)\n10*a\nend function}.b(2)", 20);
-  check("{a:11, b: function()\nself.a^2\nend function}.b()", 121);
+  check(`{a:10, b:function(a)
+  10*a
+end function}.b(2)`, 20);
+  check(`{a:11, b: function()
+  self.a^2
+end function}.b()`, 121);
 
-  check("student <- {name: 'John Doe'}\nscott <- new student\nscott.name\nstudent.grade<-9\nscott.grade\nscott.grade <- 7\n{scott.grade, student.grade, scott.name}", [7, 9, "John Doe"]);
+  check(`student <- {name: 'John Doe'}
+scott <- new student
+scott.name
+student.grade<-9
+scott.grade
+scott.grade <- 7
+{scott.grade, student.grade, scott.name}`, [7, 9, "John Doe"]);
 
-  testConfig.globals = "student <- {name: 'John Doe'}\nscott <- new student()\nscott.name\nstudent.grade<-9\nscott.grade\nscott.grade <- 7\n{scott.grade, student.grade, scott.name}";
+  testConfig.globals = `student <- {name: 'John Doe'}
+scott <- new student()
+scott.name
+student.grade<-9
+scott.grade
+scott.grade <- 7
+{scott.grade, student.grade, scott.name}`;
   check("{scott.grade, student.grade, scott.name}", [7, 9, "John Doe"]);
   check("scott.parent.grade", 9);
   failure("student.parent");
@@ -1137,19 +1571,41 @@ test("Misc functions", () => {
   check("scott.parent.name", "John Doe");
   check("scott.name", "John Doe");
 
-  check("Scott.name <- 'Scott'\n scott.parent.name", "John Doe");
-  check("Scott.name <- 'Scott'\n  scott.name", "Scott");
-  check("Scott.name <- 'Scott'\n student.studentName <- function()\nself.parent.name\nend function\nstudent.childName <- function()\nself.name\nend function\n{scott.childName(), scott.studentName()}", ["Scott", "John Doe"]);
-  check("z<-{a:10, constructor: function(z)\nself.a<-z\nend function}\nq<- new z(20)\nq.a", 20);
+  check(`Scott.name <- 'Scott'
+scott.parent.name`, "John Doe");
+  check(`Scott.name <- 'Scott'
+scott.name`, "Scott");
+  check(`Scott.name <- 'Scott'
+student.studentName <- function()
+  self.parent.name
+end function
+student.childName <- function()
+  self.name
+end function
+{scott.childName(), scott.studentName()}`, ["Scott", "John Doe"]);
+  check(`z<-{a:10, constructor: function(z)
+  self.a<-z
+end function}
+q<- new z(20)
+q.a`, 20);
 
-  check("z <- function(x) x^2\nz(3)", 9);
+  check(`z <- function(x) x^2
+z(3)`, 9);
 
-  check("z <- function( a, b ) a+b\nz(3,2)", 5);
+  check(`z <- function( a, b ) a+b
+z(3,2)`, 5);
 
-  check("z <- function( a, b, c=2) a+b+c\nz(3,2)", 7);
+  check(`z <- function( a, b, c=2) a+b+c
+z(3,2)`, 7);
 
-  check("function z( a, b, c=2)\na+b+c\nend function\nz(3,2)", 7);
-  check("function z( a , b , c , d = 2, e=3)\na+b+c\nend function\nz(3,2,1)", 6);
+  check(`function z( a, b, c=2)
+  a+b+c
+end function
+z(3,2)`, 7);
+  check(`function z( a , b , c , d = 2, e=3)
+  a+b+c
+end function
+z(3,2,1)`, 6);
 
   check("q <- 'a' \n q.parent.moo <- 'moob' \n 'abc'.moo", "moob");
 
@@ -1157,37 +1613,104 @@ test("Misc functions", () => {
   failure("1 :2");
   failure("1 : 2");
   failure("1:2: 7");
-  check("a<-10\n{a:2}.a", 2);
-  check("a<-10\n{a: 2}.a", 2);
-  failure("a<-10\n{(a): 2}");
+  check(`a<-10
+{a:2}.a`, 2);
+  check(`a<-10
+{a: 2}.a`, 2);
+  failure(`a<-10
+{(a): 2}`);
 
-  check("z <- {}\nfunction xx(a)\na.x <-10\na\nend function\nq <- xx(z)\n{q.x, z.x}", [10, 10]);
+  check(`z <- {}
+function xx(a)
+  a.x <-10
+  a
+end function
+q <- xx(z)
+{q.x, z.x}`, [10, 10]);
 
-  check("Person <- {\nfirstName: \"John\",\nlastName: \"Smith\",\nfullName: function() self.firstName+\" \"+self.lastName,\nconstructor: function(first, last)\nself.firstName <- first\nself.lastName <- last\nend function\n}\n\n\nStudent <- new Person(\"a\",\"b\")\nStudent.grade <- 10\nStudent.school <- \"Midfield High\"\nStudent.constructor <- function(first, last, grade, school)\n   self.grade <- grade\n   self.school <- school\nparent.constructor(first,last)\nend function\n\nz<-new Student(\"first\",\"last\",1,\"d\")\n{Student.fullName(), z.fullName()}", ["a b", "first last"]);
+  check(`Person <- {
+  firstName: "John",
+  lastName: "Smith",
+  fullName: function() self.firstName+" "+self.lastName,
+  constructor: function(first, last)
+    self.firstName <- first
+    self.lastName <- last
+  end function
+}
 
-  check("foo <- {constructor: function() self.z<-123}\n xx<- new foo\n xx.z", 123);
 
-  check("StringBase.xxx <- 10\n'a'.xxx", 10);
-  check("VectorBase.yyy <- 20\n{}.yyy", 20);
+Student <- new Person("a","b")
+Student.grade <- 10
+Student.school <- "Midfield High"
+Student.constructor <- function(first, last, grade, school)
+  self.grade <- grade
+  self.school <- school
+  parent.constructor(first,last)
+end function
 
-  check("z <- {x:'ab'}\nz.x.length()", 2);
-  check("z <- {x:{y:'ab'}}\nz.x.length()", 1);
-  check("z <- {x:{y:'abc'}}\nz.x.y.length()", 3);
+z<-new Student("first","last",1,"d")
+{Student.fullName(), z.fullName()}`, ["a b", "first last"]);
 
-  testConfig.globals = "z <- 'abc'\nz.moo <- function() 2";
+  check(`foo <- {constructor: function() self.z<-123}
+xx<- new foo
+xx.z`, 123);
+
+  check(`StringBase.xxx <- 10
+'a'.xxx`, 10);
+  check(`VectorBase.yyy <- 20
+{}.yyy`, 20);
+
+  check(`z <- {x:'ab'}
+z.x.length()`, 2);
+  check(`z <- {x:{y:'ab'}}
+z.x.length()`, 1);
+  check(`z <- {x:{y:'abc'}}
+z.x.y.length()`, 3);
+
+  testConfig.globals = `z <- 'abc'
+z.moo <- function() 2`;
   check("z.moo()", 2);
   failure("'cow'.moo()");
 
   failure("throw 'oops!'");
-  failure("if true then\n throw 'oops'\n end if\n 1");
-  check("if false then\n throw 'oops'\n end if\n 1", 1);
-  check("if true then\n #comment\n end if\n 1", 1);
+  failure(`if true then
+  throw 'oops'
+end if
+1`);
+  check(`if false then
+  throw 'oops'
+end if
+1`, 1);
+  check(`if true then
+  #comment
+end if
+1`, 1);
   check("if false then\n #comment\nelse\n2\nend if\n", 2);
-  check("try\n 1\n 2\n catch err\n 3\n end try", 2);
-  check("try\n  catch err\n 3\n end try", 0);
-  check("try\n 1\n throw 'oops!'\n 2\n catch err\n 3\n end try", 3);
+  check(`try
+  1
+  2
+catch err
+  3
+end try`, 2);
+  check(`try
+catch err
+  3
+end try`, 0);
+  check(`try
+  1
+  throw 'oops!'
+  2
+catch err
+  3
+end try`, 3);
   check("try\n 1\n throw 'oops!'\n 2\n catch err\n \n end try", 0);
-  check("try\n 1\n throw 'oops!'\n 2\n catch err\n err+' b'\n end try", "oops! b");
+  check(`try
+  1
+  throw 'oops!'
+  2
+catch err
+  err+' b'
+end try`, "oops! b");
 
   testConfig.globals = "";
 });

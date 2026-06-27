@@ -10,12 +10,12 @@ const TIME_UNITS = ["SECONDS", "MINUTES", "HOURS", "DAYS", "WEEKS", "MONTHS", "Y
 /**
  * Validates that an object only has the allowedKeys. Keys that aren't
  * on the list but start with "_" are ignored.
- * 
+ *
  * @param {string} label
- * @param {object} object 
- * @param {Object<string, string|string[]>} allowed 
+ * @param {object} object
+ * @param {Object<string, string|string[]>} allowed
  * @param {string[]} errors
- * 
+ *
  * @return {boolean} - true if there were no errors
  */
 function validateKeys(label, object, allowed, errors) {
@@ -87,10 +87,10 @@ function validateKeys(label, object, allowed, errors) {
 
 
 /**
- * @param {string} label 
- * @param {string} value 
- * @param {string[]} allowedValues 
- * @param {string[]} errors 
+ * @param {string} label
+ * @param {string} value
+ * @param {string[]} allowedValues
+ * @param {string[]} errors
  */
 function validateEnum(label, value, allowedValues, errors) {
   if (value === undefined || value === null) {
@@ -113,9 +113,9 @@ function validateEnum(label, value, allowedValues, errors) {
 
 
 /**
- * 
- * @param {object} object 
- * @param {string[]} errors 
+ *
+ * @param {object} object
+ * @param {string[]} errors
  */
 function validateModel(object, errors) {
   let noErrors = validateKeys(
@@ -129,6 +129,7 @@ function validateModel(object, errors) {
       "simulation": "object",
       "elements": "array",
       "visualizations": "array",
+      "scenarios": "array",
       "engine_settings": "object"
     },
     errors
@@ -199,6 +200,36 @@ function validateModel(object, errors) {
       }
     }
   }
+
+  if (object.scenarios) {
+    for (let scenario of object.scenarios) {
+      if (!scenario || typeof scenario !== "object" || Array.isArray(scenario)) {
+        errors.push(`Scenarios must be objects. Got: ${JSON.stringify(scenario)}`);
+        continue;
+      }
+
+      validateKeys(
+        "a scenario",
+        scenario,
+        {
+          "name": "string",
+          "description": "string",
+          "values": "object"
+        }, errors);
+      if (!("values" in scenario)) {
+        errors.push("Scenarios require a values object.");
+      }
+      if (scenario.values) {
+        for (let key in scenario.values) {
+          let val = scenario.values[key];
+          if (typeof val !== "number" && typeof val !== "string" && typeof val !== "boolean") {
+            errors.push(`Scenario value for "${key}" must be a number, string, or boolean. Got: ${val}`);
+          }
+        }
+      }
+    }
+  }
+
 
 
 
@@ -300,7 +331,7 @@ function validateModel(object, errors) {
           {
             to: "string",
             from: "string"
-          },{
+          }, {
             value: "equation",
             trigger: ["PROBABILITY", "TIMEOUT", "CONDITION"]
           }, {
@@ -315,7 +346,7 @@ function validateModel(object, errors) {
           {
             to: "string",
             from: "string"
-          },{
+          }, {
             polarity: ["NEUTRAL", "POSITIVE", "NEGATIVE"]
           }, {
             to_coordinates: "point",
@@ -353,15 +384,15 @@ function mapTimeUnits(units) {
 
 
 /**
- * @param {string} val 
- * @returns 
+ * @param {string} val
+ * @returns
  */
 function toNumberOrString(val) {
   if (val == null) return "";
 
   const trimmed = val.trim();
   const parsed = parseFloat(trimmed);
-  
+
   if (!isNaN(parsed) && /^[+-]?\d+(\.\d+)?$/.test(trimmed)) {
     return parsed;
   }
@@ -371,13 +402,13 @@ function toNumberOrString(val) {
 
 
 /**
- * @param {GraphNode} node 
- * @param {{x: number, y: number}} coordinates 
+ * @param {GraphNode} node
+ * @param {{x: number, y: number}} coordinates
  */
 function shiftGeometry(node, coordinates) {
   let newCoords = { x: coordinates.x, y: coordinates.y };
   let p = node.parent;
-  
+
   while (p && p.geometry) {
     newCoords.x += p.geometry.x;
     newCoords.y += p.geometry.y;
@@ -617,7 +648,7 @@ let processors = {
         polarity: "NEGATIVE"
       };
     }
-    
+
 
     return el;
   },
@@ -628,9 +659,9 @@ let processors = {
 
 
 /**
-   * @param {Model} model
-   * @param {string} id 
-   */
+ * @param {Model} model
+ * @param {string} id
+ */
 function idToName(model, id) {
   try {
     let primitive = model.getId(id);
@@ -644,7 +675,7 @@ function idToName(model, id) {
 
 /**
  * Converts a Model object into a JSON string following the ModelJSON specification.
- * 
+ *
  * @param {Model} model
  * @returns {object} The ModleJSON object representing the model.
  */
@@ -810,7 +841,7 @@ export function createModelJSON(model) {
         viz.type = "TABLE";
       }
       viz.elements = display.primitives.map(id => idToName(model, id)).filter(n => !!n);
-      
+
       if (viz.elements.length) {
         visualizations.push(viz);
       }
@@ -821,6 +852,22 @@ export function createModelJSON(model) {
     modelJSON.visualizations = visualizations;
   }
 
+  let scenarios = model.scenarios.map(scenario => {
+    let sc = {
+      name: scenario.name,
+      values: Object.fromEntries(Object.entries(scenario.primitives).map(([id, value]) => {
+        return [idToName(model, id), value];
+      }))
+    };
+    if (scenario.note) {
+      sc.description = scenario.note;
+    }
+    return sc;
+  });
+  if (scenarios.length) {
+    modelJSON.scenarios = scenarios;
+  }
+
 
   return modelJSON;
 }
@@ -829,7 +876,7 @@ export function createModelJSON(model) {
 
 /**
  * Loads a ModelJSON string into a new Model instance.
- * 
+ *
  * @param {object} data
  * @returns {Model} A new Model object reflecting the parsed ModelJSON.
  */
@@ -844,7 +891,7 @@ export function loadModelJSON(data) {
 
 
   validateModel(data, errors);
-  
+
 
   const model = new Model();
 
@@ -885,6 +932,8 @@ export function loadModelJSON(data) {
   elements.sort((a, b) => (TYPE_ORDER[a.type] || 99) - (TYPE_ORDER[b.type] || 99));
 
   const nameMap = Object.create(null);
+  /** @type {Object<string, {id: string, defaultValue: any}>} */
+  const interactiveDefaults = Object.create(null);
 
   // We need to run this after everything is created
   // converters by depend on other converters.
@@ -896,7 +945,7 @@ export function loadModelJSON(data) {
     elementIndex++;
 
     const { type, name, description, behavior = {}, display = {} } = el;
-    
+
     let newPrimitive = null;
 
     /**
@@ -1146,10 +1195,21 @@ export function loadModelJSON(data) {
         if ("interactive_max" in display) {
           newPrimitive._node.setAttribute("SliderMax", display.interactive_max);
         }
+        let defaultValue;
+        if (type === "STOCK") {
+          defaultValue = behavior.initial_value;
+        } else if (type === "STATE") {
+          defaultValue = behavior.initial_value;
+        } else {
+          defaultValue = behavior.value;
+        }
+        if (defaultValue !== undefined) {
+          interactiveDefaults[name.toLowerCase()] = { id: newPrimitive.id, defaultValue };
+        }
       }
       if (display.symbol) {
         newPrimitive._node.setAttribute("Image", `emoji:${display.symbol}`);
-      } 
+      }
 
       if (name && type !== "LINK") {
         if (nameMap[name.toLowerCase()]) {
@@ -1200,6 +1260,40 @@ export function loadModelJSON(data) {
     });
   }
 
+  if (Array.isArray(data.scenarios)) {
+    data.scenarios.forEach((scenario) => {
+      const { name, values, description } = scenario;
+
+      if (!values || typeof values !== "object" || Array.isArray(values)) {
+        return;
+      }
+
+      let valuesLower = new Set(Object.keys(values).map(k => k.toLowerCase()));
+      let primitives = {};
+      for (const [name, value] of Object.entries(values)) {
+        let primitive = nameMap[name.toLowerCase()];
+        if (!primitive) {
+          errors.push(`Scenario value element "${name}" not found.`);
+          continue;
+        }
+
+        primitives[primitive.id] = value;
+      }
+
+      for (const [lowerName, entry] of Object.entries(interactiveDefaults)) {
+        if (!valuesLower.has(lowerName)) {
+          primitives[entry.id] = entry.defaultValue;
+        }
+      }
+
+      let s = { name, primitives };
+      if (description) {
+        s.note = description;
+      }
+      model.scenarios.push(s);
+    });
+  }
+
   if (errors.length) {
     throwModelJSONError(errors);
   }
@@ -1217,8 +1311,8 @@ class ModelJSONError extends Error {
 }
 
 /**
- * 
- * @param {string[]} errorList 
+ *
+ * @param {string[]} errorList
  */
 function throwModelJSONError(errorList) {
   const message = `Errors occurred while loading the ModelJSON:\n\n${errorList.map(e => "- " + e).join("\n")}`;

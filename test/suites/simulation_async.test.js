@@ -4,22 +4,22 @@ import { ModelError } from "../../src/formula/ModelError.js";
 
 
 describe.each([
-  ["Euler"], ["RK4"]
+  [/** @type {const} */ ("Euler")], [/** @type {const} */ ("RK4")]
 ])("Simulation async %s",
-  
+
   /**
    * @param {"Euler"|"RK4"} algorithm
    */
   (algorithm) => {
-  
+
     test("General", async () => {
       let m = new Model({ algorithm });
-  
+
       m.timeUnits = "Years";
       m.timeStep = 1;
       m.timeStart = 0;
       m.timeLength = 10;
-  
+
       let s = m.Stock({
         name: "My Stock"
       });
@@ -28,54 +28,54 @@ describe.each([
       });
       s.initial = "100";
       f.rate = "0.1*[My Stock]";
-  
+
       let res = await m.simulateAsync();
       let times = res.times();
       expect(times.length).toBe(11);
       expect(times[0]).toBe(0);
       expect(times[10]).toBe(10);
       expect(res.series(s)[0]).toBe(100);
-        
+
       expect(res.timeUnits).toBe("years");
 
     });
 
 
-    test("Error", () => {
+    test("Error", async () => {
       let m = new Model({ algorithm });
-    
+
       m.timeUnits = "Years";
       m.timeStep = 1;
       m.timeStart = 0;
       m.timeLength = 10;
-    
+
       let s = m.Stock({
         name: "My Stock",
         initial: "1 + true"
       });
-    
-      expect(m.simulateAsync()).rejects.toEqual({
+
+      await expect(m.simulateAsync()).rejects.toEqual({
         error: "Cannot convert Booleans to Numbers.",
         errorCode: 1089,
         errorPrimitiveName: s.name,
         errorPrimitiveId: s.id
       });
-        
+
     });
 
     test("Pause with setValue", async () => {
       let m = new Model({ algorithm });
-  
+
       m.timeUnits = "Years";
       m.timeStep = 1;
       m.timeStart = 0;
       m.timeLength = 10;
-    
+
       let v = m.Variable({
         name: "My var",
         value: "100"
       });
-    
+
       let val = 100;
       let steps = 0;
 
@@ -94,14 +94,14 @@ describe.each([
       expect(times[10]).toBe(10);
       expect(res.series(v)[0]).toBe(100);
       expect(res.series(v).at(-1)).toBe(110);
-      
+
       expect(res.timeUnits).toBe("years");
     });
 
 
     test("Pause with setValue 2", async () => {
       let m = new Model({ algorithm });
-    
+
       m.timeUnits = "Years";
       m.timeStep = 1;
       m.timeStart = 0;
@@ -111,7 +111,7 @@ describe.each([
         name: "Val",
         value: "0"
       });
-      
+
       let a = m.Action({
         name: "Increaser",
         trigger: "Condition",
@@ -127,8 +127,8 @@ describe.each([
       });
 
       m.Link(s, a);
-      
-  
+
+
       let res = await m.simulateAsync({
         onStep: (items) => {
           if (items.time === 3) {
@@ -149,12 +149,12 @@ describe.each([
 
     test("Pause with invalid setValue rejects", async () => {
       let m = new Model({ algorithm });
-  
+
       m.timeUnits = "Years";
       m.timeStep = 1;
       m.timeStart = 0;
       m.timeLength = 10;
-    
+
       let v = m.Variable({
         name: "My var",
         value: "100"
@@ -162,7 +162,7 @@ describe.each([
 
       // Delete the variable so it's not in the model
       v.delete();
-    
+
       let val = 100;
 
       await expect(m.simulateAsync({

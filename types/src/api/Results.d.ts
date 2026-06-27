@@ -10,7 +10,7 @@ export class Results {
     _nameIdMapping: {
         [x: string]: string;
     };
-    timeUnits: string;
+    timeUnits: string | undefined;
     times(): number[];
     /**
      * @param {import("./Blocks").Primitive[]=} primitives
